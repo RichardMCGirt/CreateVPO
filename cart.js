@@ -172,7 +172,9 @@ function setSaved(nextState) {
     materialsNeeded: $("#materialsNeeded"),
     pleaseDescribe: $("#pleaseDescribe"),
     toast: $("#toast"),
-      subcontractorCompany: $("#subcontractorCompanySelect")
+      subcontractorCompany: $("#subcontractorCompanySelect"),
+       descriptionOfWork: document.getElementById("descriptionOfWork"),
+  customerSelect: document.getElementById("customerSelect")
   };
   const logger = window.AIRTABLE_LOGGER || console;
 
@@ -222,7 +224,14 @@ function setSaved(nextState) {
   if (els.branch?.value)   fields["Branch"]         = [els.branch.value];
   if (els.fieldMgr?.value) fields["Field Manager"]  = [els.fieldMgr.value];
 
-  // NEW: Subcontractor (linked record) from the subcontractorCompanySelect value
+  if (els.descriptionOfWork && els.descriptionOfWork.value && els.descriptionOfWork.value.trim() !== "") {
+    fields["Description of Work"] = els.descriptionOfWork.value.trim();
+  }
+
+  if (els.subcontractorCompany?.value) {
+    fields["Subcontractor"] = [els.subcontractorCompany.value];
+  }
+
   if (els.subcontractorCompany?.value) fields["Subcontractor"] = [els.subcontractorCompany.value];
   try {
     const stateNow = getSaved();
@@ -237,6 +246,39 @@ function setSaved(nextState) {
   } catch (e) {
     console.warn('[saveToAirtable] Could not derive "Labor Cost" from saved labor rows:', e);
   }
+   (function applyBuilder() {
+    const REC_ID_RE = /^rec[a-zA-Z0-9]{14}$/;
+    const sel = els.customerSelect; // optional select
+    if (sel && sel.value) {
+      if (REC_ID_RE.test(sel.value)) {
+        // Linked-record style
+        fields["Builder"] = [sel.value];
+      } else {
+        // Plain text fallback (use the visible text)
+        const lbl = sel.selectedOptions && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent.trim() : sel.value;
+        if (lbl) fields["Builder"] = lbl;
+      }
+      return;
+    }
+    // Fallback to the free-text Customer Name input
+    const typed = els.customerName?.value?.trim();
+    if (typed) fields["Builder"] = typed;
+  })();
+
+  // NEW: Field Tech Name — mirror the Field Manager selection
+  (function applyFieldTechName() {
+    const REC_ID_RE = /^rec[a-zA-Z0-9]{14}$/;
+    const fmSel = els.fieldMgr;
+    if (fmSel && fmSel.value) {
+      if (REC_ID_RE.test(fmSel.value)) {
+        fields["Field Tech Name"] = [fmSel.value]; // linked
+      } else {
+        const txt = fmSel.selectedOptions && fmSel.selectedOptions[0] ? fmSel.selectedOptions[0].textContent.trim() : fmSel.value;
+        if (txt) fields["Field Tech Name"] = txt; // plain text fallback
+      }
+    }
+  })();
+
   // prune empties
   Object.keys(fields).forEach((k) => { if (fields[k] == null || fields[k] === "" || (Array.isArray(fields[k]) && !fields[k].length)) delete fields[k]; });
 

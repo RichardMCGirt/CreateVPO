@@ -245,99 +245,126 @@ if (subSel?.value && REC_ID_RE.test(subSel.value)) {
   fields["Subcontractor"] = [subSel.value];
 }
 
-    async function handleSave(){
-      btn.disabled = true;
-      const svc = new AirtableService();
-      const fields = {};
+async function handleSave(){
+  btn.disabled = true;
+  const svc = new AirtableService();
+  const fields = {};
 
-      const customerSel = document.getElementById("customerSelect");
-      const branchSel   = document.getElementById("branchSelect");
-      const fmSel       = document.getElementById("fieldManagerSelect");
-      const neededBySel = document.getElementById("neededBySelect");
-const subSel = document.getElementById("subcontractorCompanySelect");
-if (subSel?.value && REC_ID_RE.test(subSel.value)) {
-  fields["Subcontractor"] = [subSel.value];
-} else if (subSel?.value) {
-  console.warn('Omitting "Subcontractor": value is not a record id:', subSel.value);
-}
-      // --- Customer Name ---
-      if (customerSel) {
-        const val   = customerSel.value?.trim();
-        const label = customerSel.selectedOptions?.[0]?.textContent?.trim() || "";
-        if (CUSTOMER_NAME_IS_PLAINTEXT) {
-          if (nonEmpty(label) && label !== "—") fields["Builder"] = label;
-        } else {
-          if (REC_ID_RE.test(val)) {
-            fields["Builder"] = [val]; // linked-record
-          } else if (nonEmpty(val) || nonEmpty(label)) {
-            console.warn('Omitting "Customer Name": no rec id selected.', { val, label });
-          }
-        }
-      }
+  // Grab elements once
+  const customerSel   = document.getElementById("customerSelect");
+  const branchSel     = document.getElementById("branchSelect");
+  const fmSel         = document.getElementById("fieldManagerSelect");
+  const neededBySel   = document.getElementById("neededBySelect");
+  const subSel        = document.getElementById("subcontractorCompanySelect");
+  const jobNameEl     = document.getElementById("jobName");
+  const planNameEl    = document.getElementById("planName");
+  const elevEl        = document.getElementById("elevation");
+  const reasonSel     = document.getElementById("reasonSelect");
+  const describeEl    = document.getElementById("pleaseDescribe");
+  const descWorkEl    = document.getElementById("descriptionOfWork"); // NEW long text
 
-      // --- Branch (linked) ---
-      if (branchSel?.value && REC_ID_RE.test(branchSel.value)) {
-        fields["Vanir Office"] = [branchSel.value];
-      } else if (branchSel?.value) {
-        console.warn('Omitting "Branch": value is not a record id:', branchSel.value);
-      }
-
-      // --- Field Manager (linked) ---
-      if (fmSel?.value && REC_ID_RE.test(fmSel.value)) {
-        fields["Field Technician"] = [fmSel.value];
-      } else if (fmSel?.value) {
-        console.warn('Omitting "Field Manager": value is not a record id:', fmSel.value);
-      }
-
-      // --- Needed By (assumed text/select/date) ---
-      if (neededBySel?.value) fields["Needed By"] = neededBySel.value;
-
-      // --- Free text fields (omit if empty) ---
-      const jobName  = document.getElementById("jobName")?.value || "";
-      const planName = document.getElementById("planName")?.value || "";
-      const elev     = document.getElementById("elevation")?.value || "";
-      const reason   = document.getElementById("reasonSelect")?.value || "";
-      const describe = document.getElementById("pleaseDescribe")?.value || "";
-      if (nonEmpty(jobName))  fields["Job Name"]           = jobName;
-      if (nonEmpty(planName)) fields["Plan Name"]          = planName;
-      if (nonEmpty(elev))     fields["Elevation"]          = elev;
-      if (nonEmpty(reason))   fields["Reason For Fill In"] = reason;
-      if (nonEmpty(describe)) fields["Please Describe"]    = describe;
-
-      // --- Materials Needed (now includes a VENDORS section + per-line vendor) ---
-      fields["Materials Needed"] = buildMaterialsNeededText();
-try {
-  const laborTotalStr = document.getElementById("laborTotal")?.textContent?.trim() || "";
-  const laborTotalVal = unmoney(laborTotalStr); // you already have unmoney()
-  if (laborTotalVal != null && !Number.isNaN(Number(laborTotalVal))) {
-    fields["Labor Cost"] = Number(laborTotalVal);
+  // --- Subcontractor (linked) ---
+  if (subSel?.value && REC_ID_RE.test(subSel.value)) {
+    fields["Subcontractor"] = [subSel.value];
+  } else if (subSel?.value) {
+    console.warn('Omitting "Subcontractor": value is not a record id:', subSel.value);
   }
-} catch (e) {
-  console.warn('[handleSave] Could not parse "Labor Cost" from #laborTotal:', e);
-}
-      try {
-        // Preflight debug
-        const debugFields = JSON.parse(JSON.stringify(fields));
-        console.table(Object.entries(debugFields).map(([k,v]) => ({
-          field: k,
-          type: Array.isArray(v) ? "array" : typeof v,
-          value: Array.isArray(v) ? v.join(",") : (String(v).length > 80 ? String(v).slice(0,80)+"…" : v)
-        })));
-        console.debug("Airtable payload fields:", debugFields);
 
-        setStatus("Saving…");
-        const rec = await svc.createRecord(fields);
-        setStatus("Saved ✓", "ok");
-        console.log("Created record:", rec);
-      } catch (e) {
-        console.error("Save failed:", e);
-        setStatus("Error saving", "bad");
-        const banner = document.getElementById("airtableBanner");
-        if (banner && /Missing Airtable API Key/i.test(String(e))) banner.style.display = "block";
-      } finally {
-        setTimeout(() => { btn.disabled = false; }, 300);
-      }
+  // --- Builder (mirror Customer selection; linked if rec id, else text fallback for text fields) ---
+  if (customerSel) {
+    const val   = customerSel.value?.trim();
+    const label = customerSel.selectedOptions?.[0]?.textContent?.trim() || "";
+    if (REC_ID_RE.test(val)) {
+      fields["Builder"] = [val]; // linked-record
+    } else if (nonEmpty(label) && label !== "—") {
+      // Use this only if your Airtable "Builder" is a text field, otherwise omit
+      fields["Builder"] = label;
+    } else {
+      console.warn('Omitting "Builder": no valid customer selection.', { val, label });
     }
+  }
+
+  // --- Vanir Office (Branch; linked) ---
+  if (branchSel?.value && REC_ID_RE.test(branchSel.value)) {
+    fields["Vanir Office"] = [branchSel.value];
+  } else if (branchSel?.value) {
+    console.warn('Omitting "Vanir Office": value is not a record id:', branchSel.value);
+  }
+
+  // --- Field Tech Name (mirror Field Manager; linked if rec id else text) ---
+  if (fmSel?.value && REC_ID_RE.test(fmSel.value)) {
+    fields["Field Technician"] = [fmSel.value];
+  } else if (fmSel?.value) {
+    const label = fmSel.selectedOptions?.[0]?.textContent?.trim() || fmSel.value;
+    if (nonEmpty(label) && label !== "—") {
+      fields["Field Technician"] = label; // fallback only if this Airtable field is text
+    } else {
+      console.warn('Omitting "Field Tech Name": no valid FM selection.', { value: fmSel.value });
+    }
+  }
+
+  // --- Needed By (text/select/date) ---
+  if (neededBySel?.value) fields["Needed By"] = neededBySel.value;
+
+  // --- Free text fields (omit if empty) ---
+  const jobName  = jobNameEl?.value || "";
+  const planName = planNameEl?.value || "";
+  const elev     = elevEl?.value || "";
+  const reason   = reasonSel?.value || "";
+  const describe = describeEl?.value || "";
+
+  if (nonEmpty(jobName))  fields["Job Name"]           = jobName;
+  if (nonEmpty(planName)) fields["Plan Name"]          = planName;
+  if (nonEmpty(elev))     fields["Elevation"]          = elev;
+  if (nonEmpty(reason))   fields["Reason For Fill In"] = reason;
+  if (nonEmpty(describe)) fields["Please Describe"]    = describe;
+
+  // --- Description of Work (NEW long text) ---
+  const descWork = descWorkEl?.value?.trim() || "";
+  if (nonEmpty(descWork)) fields["Description of Work"] = descWork;
+
+  // --- Materials Needed (your builder already produces this string) ---
+  fields["Materials Needed"] = buildMaterialsNeededText();
+
+  // --- Labor Cost (from on-screen totals bar) ---
+  try {
+    const laborTotalStr = document.getElementById("laborTotal")?.textContent?.trim() || "";
+    const laborTotalVal = unmoney(laborTotalStr);
+    if (laborTotalVal != null && !Number.isNaN(Number(laborTotalVal))) {
+      fields["Labor Cost"] = Number(laborTotalVal);
+    }
+  } catch (e) {
+    console.warn('[handleSave] Could not parse "Labor Cost" from #laborTotal:', e);
+  }
+
+  // Debug preview
+  try {
+    const debugFields = JSON.parse(JSON.stringify(fields));
+    console.table(Object.entries(debugFields).map(([k,v]) => ({
+      field: k,
+      type: Array.isArray(v) ? "array" : typeof v,
+      value: Array.isArray(v) ? v.join(",") : (String(v).length > 120 ? String(v).slice(0,120)+"…" : v)
+    })));
+    console.debug("Airtable payload fields:", debugFields);
+  } catch {}
+
+  // Save
+  try {
+    setStatus("Saving…");
+    const rec = await svc.createRecord(fields);
+    setStatus("Saved ✓", "ok");
+    console.log("Created record:", rec);
+  } catch (e) {
+    console.error("Save failed:", e);
+    setStatus("Error saving", "bad");
+    const banner = document.getElementById("airtableBanner");
+    if (banner && /Missing Airtable API Key/i.test(String(e))) banner.style.display = "block";
+  } finally {
+    setTimeout(() => { btn.disabled = false; }, 300);
+  }
+}
+
+
 
     // Use { once:true } to avoid duplicate listeners; we reattach after each click.
     function attachOnce(){
