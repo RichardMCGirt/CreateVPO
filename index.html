@@ -6,6 +6,7 @@
   <title>Product Portal — Select Items, Add Labor</title>
   <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="loading.css" />
+<script src="app-config.js"></script>
 
   <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 </head>
@@ -29,7 +30,10 @@
       <option value="">All categories</option>
     </select>
     <button id="clearFilters" class="btn" disabled>Clear</button>
-  
+  <select id="appModeSelect" style="margin:8px 0;">
+  <option value="vpo">VPO</option>
+  <option value="fillin">Fill-In</option>
+</select>
 </div>
 <!-- Hidden-until-filter hint -->
 <p id="bg-hint" style="display:block;margin:10px 0;color:#555;font-style:italic;">
@@ -114,12 +118,73 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+
 <script src="database.js"></script>
 <link rel="stylesheet" href="theme.pro.css"> <!-- after -->
 
+<script src="app-ui-gates.js"></script>
 
 
 <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
 <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
+
+<script>
+  (function () {
+    try {
+      if (window.APP) {
+        document.title = (window.APP.uiTitle || "Portal") + " — Product & VPO Calculator";
+        var h1 = document.querySelector(".page-title");
+        if (h1) h1.textContent = window.APP.uiTitle || h1.textContent;
+      }
+    } catch {}
+  })();
+   (function(){
+    // Prefer URL ?app=..., then localStorage, then default
+    const qs = new URLSearchParams(location.search);
+    const qsMode = (qs.get("app")||"").toLowerCase();
+    const saved  = localStorage.getItem("vanir_app_mode") || "";
+    const mode   = qsMode || saved || "vpo";
+    const sel = document.getElementById("appModeSelect");
+    if (sel) sel.value = mode;
+    if (!qsMode && mode) {
+      // if no ?app, apply data-app attribute so app-config can see it on first render
+      document.documentElement.setAttribute("data-app", mode);
+    }
+    if (sel) sel.addEventListener("change", () => {
+      const next = sel.value;
+      localStorage.setItem("vanir_app_mode", next);
+      const url = new URL(location.href);
+      url.searchParams.set("app", next);
+      location.href = url.toString(); // reload with explicit mode
+    });
+  })();
+   (function(){
+    var sel = document.getElementById("appModeSelect");
+    if (!sel) return;
+    // Initialize the dropdown to current mode
+    try { sel.value = (window.APP_MODE || "vpo"); } catch {}
+    // On change, persist and reload with ?app=
+    sel.addEventListener("change", function(){
+      if (typeof window.__setAppMode === "function") {
+        window.__setAppMode(sel.value);
+      } else {
+        // fallback
+        try { localStorage.setItem("vanir_app_mode", sel.value); } catch {}
+        var url = new URL(location.href);
+        url.searchParams.set("app", sel.value);
+        location.href = url.toString();
+      }
+    }, { passive:true });
+  })();
+   (function(){
+    var fab = document.getElementById("cartFab");
+    if (!fab) return;
+    fab.addEventListener("click", function(){
+      var m = window.APP_MODE || "vpo";
+      location.href = "cart.html?app=" + encodeURIComponent(m);
+    });
+  })();
+</script>
+
 </body>
 </html>

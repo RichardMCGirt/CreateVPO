@@ -203,7 +203,6 @@ async function loadSubcontractorsForSelectedBranch() {
   }
 }
 
-
 function clearSelectKeepPlaceholder(sel) {
   if (!sel) return;
   const placeholder = sel.querySelector('option[value=""]')?.cloneNode(true) || new Option("—", "");
@@ -258,26 +257,27 @@ async function handleSave(){
   const elevEl        = document.getElementById("elevation");
   const reasonSel     = document.getElementById("reasonSelect");
   const describeEl    = document.getElementById("pleaseDescribe");
-  const descWorkEl    = document.getElementById("descriptionOfWork"); // NEW long text
+  const descWorkEl    = document.getElementById("describeWorkInput");
 
-  // --- Subcontractor (linked) ---
-  if (subSel?.value && REC_ID_RE.test(subSel.value)) {
-    fields["Subcontractor"] = [subSel.value];
-  } else if (subSel?.value) {
-    console.warn('Omitting "Subcontractor": value is not a record id:', subSel.value);
-  }
-
-  // --- Builder (mirror Customer selection; linked if rec id, else text fallback for text fields) ---
+  // --- Builder / Customer Name ---
   if (customerSel) {
     const val   = customerSel.value?.trim();
     const label = customerSel.selectedOptions?.[0]?.textContent?.trim() || "";
-    if (REC_ID_RE.test(val)) {
-      fields["Builder"] = [val]; // linked-record
-    } else if (nonEmpty(label) && label !== "—") {
-      // Use this only if your Airtable "Builder" is a text field, otherwise omit
-      fields["Builder"] = label;
+    if (CUSTOMER_NAME_IS_PLAINTEXT) {
+      if (nonEmpty(label) && label !== "—") {
+        fields["Customer Name"] = label;
+      } else {
+        console.warn('Omitting "Customer Name": empty label');
+      }
     } else {
-      console.warn('Omitting "Builder": no valid customer selection.', { val, label });
+      if (REC_ID_RE.test(val)) {
+        fields["Builder"] = [val]; // linked-record
+      } else if (nonEmpty(label) && label !== "—") {
+        // Use this only if your Airtable "Builder" is a text field, otherwise omit
+        fields["Builder"] = label;
+      } else {
+        console.warn('Omitting "Builder": no valid customer selection.', { val, label });
+      }
     }
   }
 
@@ -307,16 +307,26 @@ async function handleSave(){
   const jobName  = jobNameEl?.value || "";
   const planName = planNameEl?.value || "";
   const elev     = elevEl?.value || "";
-  const reason   = reasonSel?.value || "";
-  const describe = describeEl?.value || "";
 
-  if (nonEmpty(jobName))  fields["Job Name"]           = jobName;
-  if (nonEmpty(planName)) fields["Plan Name"]          = planName;
-  if (nonEmpty(elev))     fields["Elevation"]          = elev;
-  if (nonEmpty(reason))   fields["Reason For Fill In"] = reason;
-  if (nonEmpty(describe)) fields["Please Describe"]    = describe;
+  if (nonEmpty(jobName))  fields["Job Name"]   = jobName;
+  if (nonEmpty(planName)) fields["Plan Name"]  = planName;
+  if (nonEmpty(elev))     fields["Elevation"]  = elev;
 
-  // --- Description of Work (NEW long text) ---
+  // --- Reason for Fill-In (if present) ---
+  if (reasonSel?.value) fields["Reason For Fill In"] = reasonSel.value;
+
+  // --- Please describe (if present) ---
+  const desc = describeEl?.value?.trim() || "";
+  if (nonEmpty(desc)) fields["Please Describe"] = desc;
+
+  // --- Subcontractor (linked) ---
+  if (subSel?.value && REC_ID_RE.test(subSel.value)) {
+    fields["Subcontractor"] = [subSel.value];
+  } else if (subSel?.value) {
+    console.warn('Omitting "Subcontractor": value is not a record id:', subSel.value);
+  }
+
+  // --- Description of Work (free text) ---
   const descWork = descWorkEl?.value?.trim() || "";
   if (nonEmpty(descWork)) fields["Description of Work"] = descWork;
 
@@ -324,14 +334,16 @@ async function handleSave(){
   fields["Materials Needed"] = buildMaterialsNeededText();
 
   // --- Labor Cost (from on-screen totals bar) ---
-  try {
-    const laborTotalStr = document.getElementById("laborTotal")?.textContent?.trim() || "";
-    const laborTotalVal = unmoney(laborTotalStr);
-    if (laborTotalVal != null && !Number.isNaN(Number(laborTotalVal))) {
-      fields["Labor Cost"] = Number(laborTotalVal);
+  if (window.APP?.includeLabor) {
+    try {
+      const laborTotalStr = document.getElementById("laborTotal")?.textContent?.trim() || "";
+      const laborTotalVal = unmoney(laborTotalStr);
+      if (laborTotalVal != null && !Number.isNaN(Number(laborTotalVal))) {
+        fields["Labor Cost"] = Number(laborTotalVal);
+      }
+    } catch (e) {
+      console.warn('[handleSave] Could not parse "Labor Cost" from #laborTotal:', e);
     }
-  } catch (e) {
-    console.warn('[handleSave] Could not parse "Labor Cost" from #laborTotal:', e);
   }
 
   // Debug preview
@@ -360,6 +372,7 @@ async function handleSave(){
     setTimeout(() => { btn.disabled = false; }, 300);
   }
 }
+
 
 
 

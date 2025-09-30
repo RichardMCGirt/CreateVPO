@@ -94,7 +94,6 @@ async function refreshSubcontractorsForBranch(service) {
       (opts||[]).map(o => ({ value: o.id, label: o.label }))
     );
   } catch (e) {
-    console.warn("[subcontractor] failed to load options:", e);
     populateSelectWithPairs(els.subcontractorCompany, []);
   }
 }
@@ -135,8 +134,6 @@ async function initDropdowns(service) {
     setStatus("", "");
   } catch (err) {
     logger.error?.("dropdowns", err);
-    setStatus("Failed to load dropdowns", "err");
-    showToast("Failed to load dropdowns — check console");
   } finally {
     ["branch","fieldMgr","neededBy","reason"].forEach(k => els[k]?.removeAttribute("aria-busy"));
   }
@@ -154,7 +151,14 @@ function setSaved(nextState) {
   } catch {}
 }
 
-
+// cart.js — before doing location.href = 'index.html'
+(function(){
+  var back = document.querySelector('a[href="index.html"]');
+  if (back) {
+    var m = window.APP_MODE || "vpo";
+    back.setAttribute("href", "index.html?app=" + encodeURIComponent(m));
+  }
+})();
 
   // ---------- Airtable wiring (unchanged logic; minor cleanups) ----------
   const els = {
@@ -228,25 +232,28 @@ function setSaved(nextState) {
     fields["Description of Work"] = els.descriptionOfWork.value.trim();
   }
 
-  if (els.subcontractorCompany?.value) {
+   if (els.subcontractorCompany?.value) {
     fields["Subcontractor"] = [els.subcontractorCompany.value];
   }
 
-  if (els.subcontractorCompany?.value) fields["Subcontractor"] = [els.subcontractorCompany.value];
-  try {
-    const stateNow = getSaved();
-    const laborArr = Array.isArray(stateNow?.labor) ? stateNow.labor : [];
-    const laborTotal = laborArr.reduce((sum, l) => {
-      const qty  = Math.max(0, Math.floor(toNumberLoose(l.qty)));
-      const rate = Math.max(0, toNumberLoose(l.rate));
-      const pct  = Math.max(0, toNumberLoose(l.margin ?? l.marginPct)); // accept either key
-      return sum + qty * rate * (1 + pct / 100);
-    }, 0);
-    fields["Labor Cost"] = laborTotal;
-  } catch (e) {
-    console.warn('[saveToAirtable] Could not derive "Labor Cost" from saved labor rows:', e);
+  // --- Labor Cost (from saved labor rows) ---
+  if (window.APP?.includeLabor) {
+    try {
+      const stateNow = getSaved();
+      const laborArr = Array.isArray(stateNow?.labor) ? stateNow.labor : [];
+      const laborTotal = laborArr.reduce((sum, l) => {
+        const qty  = Math.max(0, Math.floor(toNumberLoose(l.qty)));
+        const rate = Math.max(0, toNumberLoose(l.rate));
+        const pct  = Math.max(0, toNumberLoose(l.margin ?? l.marginPct)); // accept either key
+        return sum + qty * rate * (1 + pct / 100);
+      }, 0);
+      fields["Labor Cost"] = laborTotal;
+    } catch (e) {
+      console.warn('[saveToAirtable] Could not derive "Labor Cost" from saved labor rows:', e);
+    }
   }
-   (function applyBuilder() {
+
+  (function applyBuilder() {
     const REC_ID_RE = /^rec[a-zA-Z0-9]{14}$/;
     const sel = els.customerSelect; // optional select
     if (sel && sel.value) {
@@ -377,8 +384,6 @@ function setSaved(nextState) {
       setStatus("", "");
     } catch (err) {
       logger.error?.("dropdowns", err);
-      setStatus("Failed to load dropdowns", "err");
-      showToast("Failed to load dropdowns — check console");
     } finally {
       ["branch","fieldMgr","neededBy","reason"].forEach(k => els[k]?.removeAttribute("aria-busy"));
     }

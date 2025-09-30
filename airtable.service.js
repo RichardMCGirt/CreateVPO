@@ -2,42 +2,25 @@
   "use strict";
 
   // === HARD-CODE YOUR CONFIG HERE ===
-  const AIRTABLE_CONFIG = Object.freeze({
+   const RUNTIME = (global.APP && global.APP.airtable) ? global.APP.airtable : null;
+
+  const AIRTABLE_CONFIG = Object.freeze(RUNTIME || {
+    // (your existing defaults stay here as a fallback)
     API_KEY: "patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054",
     BASE_ID: "appQDdkj6ydqUaUkE",
     TABLE_ID: "tblO72Aw6qplOEAhR",
     VIEW_ID: "viwf55KoUHJZfdEY6",
-
-    // Source tables for linked/synced dropdowns
     SOURCES: {
-      FIELD_MANAGER: {
-        TABLE_ID: "tblj6Fp0rvN7QyjRv",
-        VIEW_ID:  "viwgHExXtj0VSlmbU",
-        LABEL_CANDIDATES: ["Full Name","Name","Field Manager","Field Manager Name","Title"]
-      },
-      BRANCH: {
-        TABLE_ID: "tblD2gLfkTtJYIhmK",
-        VIEW_ID:  "viw8tjumtr3Er8SuR",
-        LABEL_CANDIDATES: ["Vanir Office","Branch","Name","Division","Office"]
-      },
-      CUSTOMER: {
-        TABLE_ID: "tblQ7yvLoLKZlZ9yU",
-        VIEW_ID:  "Grid view",
-        LABEL_CANDIDATES: ["Client Name","Client","Name"]
-      },
-      // In AIRTABLE_CONFIG.SOURCES:
-SUBCONTRACTOR: {
-  TABLE_ID: "tblgsUP8po27WX7Hb",
-  VIEW_ID:  "Grid view",
-  // likely labels to show in the dropdown
-  LABEL_CANDIDATES: ["Subcontractor Company Name","Company","Company Name","Name","Vendor","Vendor Name"]
-},
-
-     
+      FIELD_MANAGER: { TABLE_ID: "tblj6Fp0rvN7QyjRv", VIEW_ID: "viwgHExXtj0VSlmbU",
+        LABEL_CANDIDATES: ["Full Name","Name","Field Manager","Field Manager Name","Title"] },
+      BRANCH: { TABLE_ID: "tblD2gLfkTtJYIhmK", VIEW_ID: "viw8tjumtr3Er8SuR",
+        LABEL_CANDIDATES: ["Vanir Office","Branch","Name","Division","Office"] },
+      CUSTOMER: { TABLE_ID: "tblQ7yvLoLKZlZ9yU", VIEW_ID: "Grid view",
+        LABEL_CANDIDATES: ["Client Name","Client","Name"] },
+      SUBCONTRACTOR: { TABLE_ID: "tblgsUP8po27WX7Hb", VIEW_ID: "Grid view",
+        LABEL_CANDIDATES: ["Subcontractor Company Name","Company","Company Name","Name","Vendor","Vendor Name"] },
     }
   });
-
-  // ---------- Logging Utility ----------
 // ---------- Logging Utility ----------
 const AIRTABLE_LOGGER = (() => {
   const LEVELS = { silent: 0, error: 1, warn: 2, info: 3, debug: 4, trace: 5 };

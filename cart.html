@@ -1,18 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-app="">
 <head>
   <meta charset="UTF-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, viewport-fit=cover"
-  />
-  <title>Your Cart — Product & VPO Calculator</title>
-  <link rel="stylesheet" href="style.css"/>
-    <link rel="stylesheet" href="cart.css" />
-    
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Your Cart — Product & VPO / Fill-In</title>
 
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css"/>
+  <link rel="stylesheet" href="cart.css" />
   <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 
+  <!-- App mode (must load first so the rest can read APP) -->
+  <script src="app-config.js"></script>
 </head>
 <body>
 
@@ -20,7 +19,6 @@
     <header class="cart-header">
       <div class="cart-actions" role="toolbar" aria-label="Cart actions">
         <a href="index.html" class="btn btn--ghost btn--back btn--icon-only" aria-label="Continue browsing">
-          
           <span class="btn__icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" focusable="false" aria-hidden="true">
               <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -28,69 +26,121 @@
           </span>
           <span class="btn__text">Continue Browsing</span>
         </a>
+
         <h1 class="h2">Your Cart</h1>
+        <!-- Button label can be anything; keeping “Clear All” -->
         <button id="clearCart" class="btn danger" aria-label="Clear all items">Clear All</button>
       </div>
     </header>
 
-    <section id="fillin-section" class="card" aria-labelledby="fillinTitle">
+    <!-- Shared top form card; contents below swap by app mode -->
+    <section id="form-section" class="card" aria-labelledby="formTitle">
       <div id="airtableBanner">
         <strong>Missing Airtable API Key.</strong> In your browser console run:
         <code>localStorage.setItem('AIRTABLE_API_KEY','YOUR_AIRTABLE_PAT_HERE')</code>
       </div>
+
       <header class="stack" style="margin-bottom: 8px;">
-        <strong id="fillinTitle">VPO</strong>
+        <strong id="formTitle">Request Details</strong>
       </header>
 
-   
+      <!-- Common fields (both apps) -->
+      <div class="field">
+        <label class="field-label" for="branchSelect">Branch</label>
+        <!-- allow persistence hook if you already use it -->
+        <select id="branchSelect" data-persist-key="branch"><option value="">—</option></select>
+      </div>
 
-        <div class="field">
-          <label class="field-label" for="branchSelect">Branch</label>
-<select id="branchSelect" data-persist-key="branch"></select>
-        </div>
-
-
-           <div class="grid" role="group" aria-label="Fill-In Request Fields">
+      <div class="grid" role="group" aria-label="Common Fields">
         <div class="field">
           <label class="field-label" for="customerSelect">Customer</label>
           <select id="customerSelect"><option value="">—</option></select>
         </div>
 
-       <div class="field">
-  <label class="field-label" for="fieldManagerSelect">Field Manager</label>
-  <select id="fieldManagerSelect" data-persist-key="fieldManager">
-    <option value="">—</option>
-  </select>
-</div>
-
-   
-
+        <div class="field">
+          <label class="field-label" for="fieldManagerSelect">Field Manager</label>
+          <select id="fieldManagerSelect" data-persist-key="fieldManager">
+            <option value="">—</option>
+          </select>
+        </div>
 
         <div class="field">
           <label class="field-label" for="jobName">Job Name</label>
           <input id="jobName" type="text" placeholder="Job Name" />
         </div>
+      </div>
 
-<div class="field">
-  <label class="field-label" for="subcontractorCompanySelect">Subcontractor Company Name</label>
-  <select id="subcontractorCompanySelect">
-    <option value="">—</option>
-  </select>
-</div>
+      <!-- ========================= -->
+      <!-- Fill-In only fields       -->
+      <!-- ========================= -->
+      <div class="grid" data-app-only="fillin" role="group" aria-label="Fill-In Only Fields" style="display:none;">
+        <div class="field">
+          <label class="field-label" for="neededBySelect">Needed By</label>
+          <select id="neededBySelect">
+            <option value="" selected>— Select —</option>
+            <option value="ASAP">ASAP</option>
+            <option value="Tomorrow">Tomorrow</option>
+          </select>
+        </div>
 
-<div class="field">
-  <label class="field-label" for="descriptionOfWork">Description of Work</label>
-  <textarea id="descriptionOfWork" rows="5" placeholder="Describe the work to be done"></textarea>
-</div>
+        <div class="field">
+          <label class="field-label" for="planName">Plan Name</label>
+          <input id="planName" type="text" placeholder="Plan Name" />
+        </div>
 
+        <div class="field">
+          <label class="field-label" for="elevation">Elevation</label>
+          <input id="elevation" type="text" placeholder="Elevation" />
+        </div>
 
-     
+        <div class="field">
+          <label class="field-label" for="reasonSelect">Reason For Fill In</label>
+          <select id="reasonSelect">
+            <option value="" selected>— Select —</option>
+            <option value="Takeoff Incorrect">Takeoff Incorrect</option>
+            <option value="Theft">Theft</option>
+            <option value="Subcontractor Installed Incorrectly">Subcontractor Installed Incorrectly</option>
+            <option value="Missing Options">Missing Options</option>
+            <option value="Ordered Incorrectly">Ordered Incorrectly</option>
+            <option value="Scope Not Followed">Scope Not Followed</option>
+            <option value="Damaged">Damaged</option>
+            <option value="Scope Has Changed">Scope Has Changed</option>
+            <option value="Borrowed Material For Another Job">Borrowed Material For Another Job</option>
+            <option value="Warranty Item">Warranty Item</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="pleaseDescribe">Please Describe</label>
+          <textarea id="pleaseDescribe" placeholder="Describe the situation"></textarea>
+        </div>
+      </div>
+
+      <!-- ========================= -->
+      <!-- VPO only fields           -->
+      <!-- ========================= -->
+      <div class="grid" data-app-only="vpo" role="group" aria-label="VPO Only Fields" style="display:none;">
+        <div class="field">
+          <label class="field-label" for="subcontractorCompanySelect">Subcontractor Company Name</label>
+          <select id="subcontractorCompanySelect">
+            <option value="">—</option>
+          </select>
+        </div>
+
+        <div class="field" style="grid-column: 1 / -1;">
+          <label class="field-label" for="descriptionOfWork">Description of Work</label>
+          <textarea id="descriptionOfWork" rows="5" placeholder="Describe the work to be done"></textarea>
+        </div>
+      </div>
+
       <div class="right">
         <span id="airtableStatus" class="pill" aria-live="polite" aria-atomic="true">Idle</span>
         <button id="saveAirtable" class="btn primary">Save to Airtable</button>
       </div>
     </section>
 
+    <!-- Cart table (shared) -->
     <section id="cart-section" class="card" aria-labelledby="cartTitle">
       <header class="stack" style="margin-bottom: 8px;">
         <strong id="cartTitle">Selected SKUs</strong>
@@ -111,8 +161,8 @@
         <tbody></tbody>
       </table>
 
-      <!-- Labor -->
-      <div id="labor-list">
+      <!-- Labor (shown only when includeLabor===true) -->
+      <div id="labor-list" style="display:none;">
         <div class="labor-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;">
           <strong>Labor</strong>
           <div><button id="addLabor" class="btn">+ Add Labor Line</button></div>
@@ -129,23 +179,201 @@
       </div>
 
       <div id="totals" aria-live="polite" aria-atomic="true">
-        <div class="label">Products Total:</div><div class="value" id="productTotal">$0.00</div>
-        <div class="label">Labor Total:</div>   <div class="value" id="laborTotal">$0.00</div>
+        <div class="label" id="productsTotalLabel">Products Total:</div><div class="value" id="productTotal">$0.00</div>
+        <div class="label" id="laborTotalLabel">Labor Total:</div>     <div class="value" id="laborTotal">$0.00</div>
         <div class="label grand">Grand Total:</div><div class="value grand" id="grandTotal">$0.00</div>
       </div>
-
-    
     </section>
   </main>
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" style="display:none;">Done</div>
 
+  <!-- Scripts -->
   <script src="airtable.service.js"></script>
+  <script src="cart.js"></script>
+  <script src="patch.js"></script>
+  <script src="app-ui-gates.js"></script>
 
-<script src="cart.js"></script>
-<script src="patch.js"></script>
+  <!-- Tiny runtime toggles for this page -->
+  <script>
+  (function(){
+    "use strict";
 
+    // 1) Title + header label
+    function applyTitles(){
+      try {
+        var app = window.APP || {};
+        var title = (app.uiTitle || (app.key === "fillin" ? "Fill-In" : "VPO"));
+        document.title = "Your Cart — " + title;
+        var formTitle = document.getElementById("formTitle");
+        if (formTitle) formTitle.textContent = title + " Request Details";
+      } catch(e){}
+    }
 
+    // 2) Show/hide app-specific blocks
+    function gateAppBlocks(){
+      var appKey = (window.APP && window.APP.key) || "vpo";
+      var onlyEls = document.querySelectorAll("[data-app-only]");
+      onlyEls.forEach(function(el){
+        var want = (el.getAttribute("data-app-only") || "").toLowerCase();
+        el.style.display = (want === appKey) ? "" : "none";
+      });
+    }
 
+    // 3) Labor visibility + totals row toggle
+    function gateLabor(){
+      var show = !!(window.APP && window.APP.includeLabor);
+      var labor = document.getElementById("labor-list");
+      var laborLbl = document.getElementById("laborTotalLabel");
+      var laborVal = document.getElementById("laborTotal");
+      if (labor) labor.style.display = show ? "" : "none";
+      if (laborLbl) laborLbl.style.display = show ? "" : "none";
+      if (laborVal) laborVal.style.display = show ? "" : "none";
+    }
+
+    // 4) Fill-In select options helpers (Needed By / Reason)
+    function setNeededByOptions(){
+      var el = document.getElementById("neededBySelect");
+      if (!el) return;
+      while (el.firstChild) el.removeChild(el.firstChild);
+      el.appendChild(new Option("— Select —", "", true, false));
+      ["ASAP","Tomorrow"].forEach(function(v){ el.appendChild(new Option(v, v)); });
+    }
+    function setReasonOptions(){
+      var el = document.getElementById("reasonSelect");
+      if (!el) return;
+      while (el.firstChild) el.removeChild(el.firstChild);
+      el.appendChild(new Option("— Select —", "", true, false));
+      [
+        "Takeoff Incorrect",
+        "Theft",
+        "Subcontractor Installed Incorrectly",
+        "Missing Options",
+        "Ordered Incorrectly",
+        "Scope Not Followed",
+        "Damaged",
+        "Scope Has Changed",
+        "Borrowed Material For Another Job",
+        "Warranty Item",
+        "Other"
+      ].forEach(function(v){ el.appendChild(new Option(v, v)); });
+    }
+
+    // 5) Persist/restore branch + FM (optional; safe if not used)
+    function initPersist(){
+      var IDS = { branch: "branchSelect", fm: "fieldManagerSelect" };
+      var KEYS = { branchId:"vanir_branch_id", branchLbl:"vanir_branch_label", fmId:"vanir_field_manager_id", fmLbl:"vanir_field_manager_label" };
+      function $(id){ return document.getElementById(id); }
+      function nonEmpty(s){ return typeof s === "string" && s.trim() !== ""; }
+      function trySet(k,v){ try{ localStorage.setItem(k,String(v??"")); }catch(e){} }
+      function tryGet(k){ try{ return localStorage.getItem(k)||""; }catch(e){ return ""; } }
+
+      function ensureOption(selectEl, value, label){
+        if (!selectEl || !nonEmpty(String(value))) return;
+        var exists = Array.prototype.some.call(selectEl.options, function(o){ return o.value === String(value); });
+        if (!exists) {
+          var opt = document.createElement("option");
+          opt.value = String(value);
+          opt.textContent = nonEmpty(label) ? String(label) : String(value);
+          opt.dataset.restored = "true";
+          selectEl.appendChild(opt);
+        }
+        selectEl.value = String(value);
+      }
+      function selectByIdOrLabel(selectEl, savedId, savedLabel){
+        if (!selectEl) return false;
+        if (nonEmpty(savedId)) {
+          selectEl.value = savedId;
+          if (selectEl.value === savedId) return true;
+        }
+        if (nonEmpty(savedLabel)) {
+          var want = savedLabel.trim().toLowerCase();
+          for (var i=0; i<selectEl.options.length; i++){
+            var o = selectEl.options[i];
+            if ((o.textContent || "").trim().toLowerCase() === want) {
+              selectEl.value = o.value;
+              return true;
+            }
+          }
+          ensureOption(selectEl, savedId || savedLabel, savedLabel);
+          return true;
+        }
+        return false;
+      }
+      function whenOptionsReady(selectEl, cb){
+        if (!selectEl) return;
+        if (selectEl.options && selectEl.options.length > 1) { cb(); return; }
+        var done=false;
+        var obs = new MutationObserver(function(){
+          if (done) return;
+          var ok = selectEl.options && selectEl.options.length > 1;
+          if (ok){ done=true; try{obs.disconnect();}catch(e){} cb(); }
+        });
+        try{ obs.observe(selectEl,{childList:true,subtree:false}); }catch(e){}
+        setTimeout(function(){
+          if (done) return;
+          var ok = selectEl.options && selectEl.options.length > 1;
+          if (ok){ done=true; try{obs.disconnect();}catch(e){} cb(); }
+        },2000);
+      }
+
+      function saveBranch(){
+        var sel = $(IDS.branch); if (!sel) return;
+        var val = sel.value || "";
+        var lbl = (sel.selectedOptions && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : "") || "";
+        trySet(KEYS.branchId,  val);
+        trySet(KEYS.branchLbl, lbl);
+      }
+      function saveFM(){
+        var sel = $(IDS.fm); if (!sel) return;
+        var val = sel.value || "";
+        var lbl = (sel.selectedOptions && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : "") || "";
+        trySet(KEYS.fmId,  val);
+        trySet(KEYS.fmLbl, lbl);
+      }
+      function restoreBranch(){
+        var sel = $(IDS.branch); if (!sel) return;
+        selectByIdOrLabel(sel, tryGet(KEYS.branchId), tryGet(KEYS.branchLbl));
+      }
+      function restoreFM(){
+        var sel = $(IDS.fm); if (!sel) return;
+        selectByIdOrLabel(sel, tryGet(KEYS.fmId), tryGet(KEYS.fmLbl));
+      }
+
+      var bSel = $("branchSelect");
+      var fmSel = $("fieldManagerSelect");
+      if (bSel) whenOptionsReady(bSel, restoreBranch);
+      if (fmSel) whenOptionsReady(fmSel, restoreFM);
+
+      if (bSel) bSel.addEventListener("change", saveBranch, { passive:true });
+      if (fmSel) fmSel.addEventListener("change", saveFM, { passive:true });
+
+      // last chance restore
+      setTimeout(function(){ try{restoreBranch();}catch(e){} try{restoreFM();}catch(e){} }, 3000);
+    }
+
+    function init(){
+      // Apply page mode
+      applyTitles();
+      gateAppBlocks();
+      gateLabor();
+
+      // Populate Fill-In selects only if Fill-In is active
+      if ((window.APP && window.APP.key) === "fillin") {
+        setNeededByOptions();
+        setReasonOptions();
+      }
+
+      // Optional localStorage persistence
+      initPersist();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+  </script>
 </body>
 </html>
