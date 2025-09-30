@@ -1,0 +1,1272 @@
+/* ===== Reset & base ===== */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+:root{
+  --gap: 12px;
+  --pad: 12px;
+  --radius: 12px;
+  --border:#e5e7eb;
+  --bg:#ffffff;
+  --muted:#6b7280;
+  --brand:#0f62fe;
+  --danger:#e66;
+  --hover:#fafafa;
+  --thead:#f7f7f7;
+  --thead-2:#fffef7;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
+}
+/* Hide Line Total (column 6) in header and body */
+#cart-table thead th:nth-child(6),
+#cart-table tbody td:nth-child(6) {
+  display: none;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: #111827;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  line-height: 1.45;
+  scroll-behavior: smooth;
+}
+
+body{
+  max-width:1100px;
+  margin:0 auto;
+  padding:16px;
+  overflow-x:hidden;
+}
+
+h1{ margin:12px 0 6px; font-weight:600; }
+
+.muted { color: var(--muted); opacity:.95; font-size:.92rem; }
+
+img, svg { max-width:100%; height:auto; }
+
+.cart-fab{
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 10000;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--brand);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 14px;
+  box-shadow: 0 6px 24px rgba(15, 98, 254, .25);
+  cursor: pointer;
+}
+
+.cart-fab .badge{
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #fff;
+  color: #111827;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .85rem;
+}
+
+.card{
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  background:#fff;
+  box-shadow: var(--shadow);
+  padding: 10px;
+}
+
+.auth-row{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  margin-bottom: 8px;
+}
+
+#controls{
+  display:grid;
+  grid-template-columns: 1fr 220px 200px 120px 160px;
+  gap: var(--gap);
+  align-items: center;
+  margin: 10px 0 10px;
+}
+
+input[type="search"],
+select,
+input[type="number"] {
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius: 10px;
+  width:80%;
+  background:#fff;
+  color:#111827;
+  text-align:center !important;
+  min-width:0;
+}
+
+input[type="search"]:disabled,
+select:disabled,
+button:disabled { opacity:.6; cursor:not-allowed; }
+
+.chips{
+  display:flex;
+  gap:8px;
+  flex-wrap:nowrap;
+  align-items:center;
+  padding: 8px 6px;
+}
+.scroller{
+  overflow-x:auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  border:1px dashed var(--border);
+  border-radius: 12px;
+  margin: 8px 0 12px;
+}
+.chip{
+  white-space:nowrap;
+  padding:6px 10px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:#fff;
+  cursor:pointer;
+  user-select:none;
+  font-size:.92rem;
+}
+.chip.active{
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+
+.btn{
+  padding:8px 10px;
+  border:1px solid #ccc;
+  border-radius:10px;
+  background:#fff;
+  cursor:pointer;
+  transition: box-shadow .15s ease, transform .03s ease;
+  user-select:none;
+  max-width:100%;
+}
+
+.btn:hover{ box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 1.5px 6px rgba(0,0,0,.06); }
+.btn:active{ transform: translateY(1px); }
+.btn.primary{ background:var(--brand); color:#fff; border-color:var(--brand); }
+.btn.danger{ background:#fff0f0; border-color:var(--danger); color:#9b1c1c; }
+.btn.ghost{ background:transparent; }
+.row-gap{ display:flex; gap:10px; align-items:center; }
+
+@media (max-width: 720px){
+  .full-width-mobile{ width:100%; }
+}
+#data-table tbody { overflow-anchor: none; }
+
+#table-container{ margin-top:10px; }
+
+table{ width:100%; border-collapse: collapse; }
+
+thead th{
+  background:var(--thead);
+  position:sticky; top:0; z-index:1;
+  text-align:left; padding:10px; border-bottom:1px solid var(--border);
+  font-weight:600; font-size:.95rem;
+}
+
+thead th{
+
+    text-align:center !important;
+}
+
+tbody td{ padding:8px 10px; border-bottom:1px solid #eee; vertical-align: middle; text-align:center !important;
+ }
+
+tbody tr:hover{ background:var(--hover); }
+
+tbody tr:last-child td { border-bottom: none; }
+
+.qty-input{ width:80px; padding:6px; border:1px solid var(--border);   text-align: center;
+ border-radius: 8px; }
+
+@media (max-width: 720px){
+ .auth-row{ justify-content:center; }
+ h1{ text-align:center; font-size:1.25rem; margin:8px 0; }
+
+#controls{
+    grid-template-columns: 1fr;
+    top: calc(56px + env(safe-area-inset-top));
+    z-index: 900;
+    background: rgba(255,255,255,.92);
+    backdrop-filter: saturate(1.1) blur(6px);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+  }
+
+  #categoryChips{
+    top: calc(56px + env(safe-area-inset-top) + 140px);
+    z-index: 800;
+    background: linear-gradient(#fff, rgba(255,255,255,.96));
+  }
+
+  #table-container { overflow: visible; }
+  #data-table,
+  #data-table tbody,
+  #data-table tr,
+  #data-table td { display:block; width:100%; }
+  #data-table thead { display:none; }
+  #data-table tbody tr{
+    border:1px solid var(--border);
+    border-radius: 16px;
+    padding: 10px 10px 12px;
+    margin: 10px auto;
+    background:#fff;
+    box-shadow: var(--shadow);
+    max-width: 640px;
+  }
+
+  #data-table tbody td{
+    border:none;
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    padding:8px 6px;
+  }
+
+  #data-table tbody td::before{
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight:600;
+  }
+
+  .row-actions{ justify-content:flex-end; }
+
+  .qty-input{ width:68px; }
+
+  header.cart-header{ flex-wrap:wrap; gap:8px; }
+}
+
+/* ===== Cart / Selection ===== */
+#cart-section{ margin:18px 0; overflow:hidden; scroll-margin-top: 80px; }
+
+#cart-section header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  background:var(--thead);
+  border-bottom:1px solid var(--border);
+  padding:10px 12px;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+
+#cart-table thead th{ background:var(--thead-2); }
+#cart-table tbody td { font-size: .95rem; }
+
+#cart-table thead th:nth-child(5),
+#cart-table tbody td:nth-child(5) { display: none; }
+
+.cell-text{ display:block; min-width:0; }
+
+@media (max-width: 720px){
+  #cart-table thead{ display:none; }
+  #cart-table, #cart-table tbody, #cart-table tr, #cart-table td{ display:block; width:100%; }
+  #cart-table tbody tr{
+    border:1px solid var(--border);
+    border-radius:16px;
+    background:#fff;
+    box-shadow: var(--shadow);
+    padding: 10px;
+    margin: 10px auto;
+    max-width: 640px;
+  }
+@media (max-width: 720px){
+ 
+  #cart-table tbody td[data-label="Qty"]{ 
+    display:grid; 
+    grid-template-columns: 1fr; 
+  }
+  #cart-table tbody td[data-label="Qty"]::before{
+    content:"";
+    display:none;
+  }
+}
+
+  #cart-table tbody td{
+    border:none;
+    display:grid;
+    grid-template-columns: 112px 1fr;
+    gap:8px;
+    padding:8px 6px;
+    min-width:0; 
+  }
+  #cart-table tbody td::before{
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight:600;
+  }
+
+  #cart-table tbody td .cell-text{
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #cart-table tbody td:nth-child(4){ align-items:center; }
+  #cart-table tbody td:nth-child(7){
+    display:flex;
+    justify-content:flex-end;
+    padding-top: 6px;
+  }
+
+  #cart-section .row-gap{ flex-wrap:wrap; }
+}
+
+#totals{
+  display:grid;
+  grid-template-columns: 1fr auto;
+  gap:8px;
+  align-items:center;
+  padding:12px;
+  border-top:1px dashed var(--border);
+}
+#totals .label{ text-align:right; padding-right:8px; color:#111827; }
+#totals .value{ font-weight:700; min-width:140px; text-align:right; }
+#totals .grand{ font-size:1.15em; }
+
+@media (max-width: 360px){
+  #totals .value{ min-width:0; }
+}
+
+/* ===== Labor ===== */
+#labor-list{ padding:10px 12px; border-top:1px dashed var(--border); }
+.labor-head{
+  display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;
+}
+.labor-row{
+  display:grid;
+  grid-template-columns: 1fr 120px 160px 90px;
+  gap:8px;
+  align-items:center;
+  margin-bottom:8px;
+}
+.labor-row input[type="number"]{
+  padding:8px; border:1px solid var(--border); border-radius: 10px; width:100%;
+}
+
+@media (max-width: 720px){
+  .labor-row{
+    grid-template-columns: 1fr;
+  }
+  .labor-row .field{
+    min-width:0;
+  }
+}
+
+/* ===== Toast ===== */
+#toast{
+  visibility:hidden;
+  min-width:180px;
+  background-color:#333;
+  color:#fff;
+  text-align:center;
+  border-radius:8px;
+  padding:14px;
+  position:fixed;
+  z-index:9999;
+  left:50%;
+  bottom:30px;
+  font-size:17px;
+  transform:translateX(-50%);
+  transition:visibility 0s, opacity 0.5s linear;
+  opacity:0;
+}
+
+
+.hidden{ display:none !important; }
+
+#data-table tbody tr,
+#cart-table tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: 1200px 64px;
+}
+
+.row-skeleton td { padding: 10px; }
+.sk-line{
+  height: 12px;
+  background: #eee;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+.sk-line.short{ width: 40%; }
+
+.status-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin: 8px 0 10px; }
+.status-pill{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 10px; border-radius:999px; border:1px solid var(--border);
+  background: var(--thead); color:#111827; font-size:.9rem;
+}
+.status-pill[data-state="loading"]{ background:#fff7ed; border-color:#fed7aa; }   
+.status-pill[data-state="stale"]  { background:#eef2ff; border-color:#c7d2fe; }   
+.status-pill[data-state="fresh"]  { background:#ecfdf5; border-color:#a7f3d0; }   
+.status-pill[data-state="error"]  { background:#fef2f2; border-color:#fecaca; }  
+
+/* === Virtual table fixes === */
+#table-viewport{
+  height:72vh;
+  overflow:auto;
+  position:relative;
+  border:1px solid var(--border);
+  background:#fff;
+  border-radius:12px;
+  margin-top:10px;
+}
+
+#table-spacer{ position:relative; width:100%; }
+
+.vrow{
+  position:absolute; left:0; right:0;
+  height:36px;               
+  display:grid;
+  grid-template-columns: 160px 180px 80px 1fr 220px 90px 100px 110px; 
+  gap:8px;
+  align-items:center;
+  padding:0 8px;
+  border-bottom:1px solid #f0f0f0;
+  box-sizing:border-box;
+  will-change: transform;
+  font-size:14px;
+  line-height:1.2;
+}
+
+.vrow > div{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  min-width:0;       
+}
+
+.vrow > div:nth-child(6),
+.vrow > div:nth-child(7),
+.vrow > div:nth-child(8){
+  text-align:right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vhead{
+  display:grid;
+  grid-template-columns: 160px 180px 80px 1fr 220px 90px 100px 110px;
+  gap:8px;
+  align-items:center;
+  padding:8px;
+  font-weight:600;
+  border-bottom:1px solid #ddd;
+  position:sticky; top:0;
+  background:#fff;
+  z-index:1;
+}
+
+.vrow:nth-child(2n){ background:#fafafa; }
+
+@media (max-width: 960px){
+  .vrow, .vhead{
+    grid-template-columns: 18% 18% 10% 1fr 0 12% 16% 16%; 
+  }
+  .vrow > div:nth-child(5), .vhead > div:nth-child(5){ display:none; }
+}
+#data-table td.row-actions{ vertical-align: middle; text-align:center; }
+#data-table td.row-actions .row-actions__inner{ display:inline-flex; align-items:center; gap:8px; }
+/* Makes virtualization smooth */
+#table-viewport {
+  position: relative;
+  height: 80vh;           /* or whatever you like */
+  overflow-y: auto;      /* vertical scroll only */
+    overflow-x: hidden;    /* 🔒 no horizontal scroll */
+  box-sizing: border-box;
+  border: 1px solid #ddd;
+  width: 100%;
+}
+
+#table-viewport .vhead {
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-columns: 160px 160px 90px 1fr 140px 100px 120px 140px;
+  gap: 6px;
+  background: #f7f7f7;
+  padding: 8px;
+  font-weight: 600;
+  z-index: 1;
+}
+
+.vrow {
+  position: absolute;     /* we position rows within the spacer area */
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: 160px 160px 90px 1fr 140px 100px 120px 140px;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+  background: #fff;
+  will-change: transform;
+}
+
+/* Hides the entire ds-row if it contains #ds-helper or #ds-multiple */
+.ds-row:has(#ds-helper),
+.ds-row:has(#ds-multiple) {
+  display: none !important;
+}
+
+/* header */
+#table-viewport .vhead > div:nth-child(5),
+#table-viewport .vhead > div:nth-child(6) {
+  display: none;
+}
+
+/* body rows */
+#table-viewport .vrow > div:nth-child(5) {
+  display: none;
+}
+
+/* If you're using CSS Grid with fixed template columns, remove the tracks too */
+#table-viewport .vhead,
+#table-viewport .vrow {
+  /* example with 8 columns originally:
+     Vendor | SKU | UOM | Desc | Helper | Multiple | Cost | PriceExt
+     Remove the 5th & 6th tracks */
+  grid-template-columns: 1fr 1fr 1fr 2fr 1fr 1fr 1fr; /* now 6 columns */
+}
+
+
+/* === Virtual table layout + polish === */
+:root{
+  --col-vendor: 140px;
+  --col-sku:    140px;
+  --col-uom:     70px;
+--col-desc: minmax(240px, 1fr);  /* was 1fr */  
+--col-helper: 180px;
+  --col-mult:    90px;
+  --col-cost:    90px;
+  --col-price:  100px;
+  --col-actions:150px;
+}
+
+/* 9-column grid shared by header + rows */
+#table-viewport .vhead,
+#table-viewport .vrow{
+  display: grid;
+  grid-template-columns:
+    var(--col-vendor)
+    var(--col-sku)
+    var(--col-uom)
+    var(--col-desc)
+    var(--col-helper)
+    var(--col-mult)
+    var(--col-cost)
+    var(--col-price)
+    var(--col-actions);
+  column-gap: 8px;
+  align-items: center;
+}
+
+/* sticky header in the scroll container */
+#table-viewport .vhead{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--thead);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  padding: 8px 10px;
+}
+
+/* rows: height aligns with inputs/buttons */
+.vrow{
+  height: 44px;                 /* matches the controls */
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.95rem;
+}
+
+/* ellipsis for cramped text */
+.vrow > div{
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* left-align texty columns; right-align money */
+#table-viewport .vhead > div:nth-child(7),
+#table-viewport .vhead > div:nth-child(8),
+.vrow > div:nth-child(7),
+.vrow > div:nth-child(8){
+  text-align: right;
+}
+
+/* actions cell: compact controls and right-justified */
+.vrow .vactions{
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vrow .qty-input{
+  width: 64px;
+  height: 28px;
+  padding: 2px 6px;
+}
+
+.vrow .btn.add-to-cart{
+  height: 28px;
+  line-height: 26px;
+  padding: 0 10px;
+}
+
+/* optional: zebra hover for readability */
+#table-viewport .vrow:hover{ background: var(--hover); }
+/* ===== iPhone 14 / small-screen tuning ===== */
+/* ===== Mobile: make SKU first & sticky (iPhone 14 width ~390px) ===== */
+@media (max-width: 430px){
+  /* allow horizontal scroll in the virtual grid when needed */
+  #table-viewport{
+    overflow-x: none;
+    /* keeps vertical inertia on iOS too (you already have -webkit-overflow-scrolling) */
+  }
+
+  /* header grid placement */
+  #table-viewport .vhead{
+    /* 7 visible columns on mobile after we hide Helper & Multiple */
+    grid-template-columns:
+      140px   /* SKU (sticky)   */
+      120px   /* Vendor         */
+      56px    /* UOM            */
+      1fr     /* Description    */
+      90px    /* Cost           */
+      100px   /* Price          */
+      132px;  /* Actions        */
+  }
+  /* rows grid placement (match header) */
+  #table-viewport .vrow{
+    grid-template-columns:
+      140px 120px 56px 1fr 90px 100px 132px;
+  }
+
+  /* Hide Helper (5) & Multiple (6) as you already do */
+  #table-viewport .vhead > :nth-child(5),
+  #table-viewport .vhead > :nth-child(6),
+  .vrow > :nth-child(5),
+  .vrow > :nth-child(6){ display:none !important; }
+
+  /* ===== Remap each remaining column to the intended slot ===== */
+  /* SKU (DOM 2) -> grid col 1 and STICKY */
+  #table-viewport .vhead > :nth-child(2),
+  #table-viewport .vrow  > :nth-child(2){
+    grid-column: 1;
+    position: sticky;
+    left: 0;
+    z-index: 3;                 /* above scrolled content */
+    background: var(--bg);      /* so text doesn't bleed under */
+    border-right: 1px solid var(--border);
+    /* subtle shadow edge to indicate stickiness */
+    box-shadow: 1px 0 0 rgba(0,0,0,.04);
+  }
+
+  /* Vendor (DOM 1) -> grid col 2 */
+  #table-viewport .vhead > :nth-child(1),
+  #table-viewport .vrow  > :nth-child(1){ grid-column: 2; }
+
+  /* UOM (DOM 3) -> grid col 3 */
+  #table-viewport .vhead > :nth-child(3),
+  #table-viewport .vrow  > :nth-child(3){ grid-column: 3; }
+
+  /* Description (DOM 4) -> grid col 4 */
+  #table-viewport .vhead > :nth-child(4),
+  #table-viewport .vrow  > :nth-child(4){ grid-column: 4; }
+
+  /* Cost (DOM 7) -> grid col 5 (right aligned) */
+  #table-viewport .vhead > :nth-child(7),
+  #table-viewport .vrow  > :nth-child(7){
+    grid-column: 5;
+    text-align: right;
+  }
+
+  /* Price (DOM 8) -> grid col 6 (right aligned) */
+  #table-viewport .vhead > :nth-child(8),
+  #table-viewport .vrow  > :nth-child(8){
+    grid-column: 6;
+    text-align: right;
+  }
+
+  /* Actions (DOM 9) -> grid col 7 (right) */
+  #table-viewport .vhead > :nth-child(9),
+  #table-viewport .vrow  > :nth-child(9){
+    grid-column: 7;
+    justify-self: end;
+  }
+
+  /* keep row height/tap targets comfy */
+  .vrow{ height: 48px; }
+  .vrow .qty-input{ height: 32px; }
+  .vrow .btn.add-to-cart{ height: 32px; line-height: 30px; }
+}
+
+
+  /* Make the cart FAB respect safe-area and be easy to tap */
+  .cart-fab{
+    top: max(10px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+    padding: 10px 14px;
+  }
+
+
+/* iOS-specific polish */
+@supports (-webkit-touch-callout: none){
+  #table-viewport{ -webkit-overflow-scrolling: touch; }
+}
+
+@media (max-width: 430px){
+  /* 1) Header SKU: NOT sticky */
+  #table-viewport .vhead > :nth-child(2){
+    position: static !important;
+    left: auto !important;
+    z-index: auto !important;
+    box-shadow: none !important;
+    border-right: none !important;
+    background: transparent !important;
+  }
+
+  /* 2) Row SKU: keep sticky, but allow full-name horizontal scroll */
+  #table-viewport .vrow > :nth-child(2){
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+    box-shadow: 1px 0 0 rgba(0,0,0,.04);
+
+    /* show whole SKU by letting the cell itself scroll left/right */
+    overflow-x: auto;          /* <-- enables inner scroll */
+    overflow-y: hidden;
+    white-space: nowrap;       /* keep on one line (stable row height) */
+    text-overflow: clip;       /* no ellipsis; we’re scrolling instead */
+    -webkit-overflow-scrolling: touch;  /* smooth scroll on iOS */
+  }
+
+  /* (Optional) widen SKU a bit so less scrolling is needed */
+  #table-viewport .vhead,
+  #table-viewport .vrow{
+    grid-template-columns:
+      160px   /* SKU (sticky) */
+      120px   /* Vendor       */
+      56px    /* UOM          */
+      1fr     /* Description  */
+      90px    /* Cost         */
+      100px   /* Price        */
+      132px;  /* Actions      */
+  }
+}
+
+/* ===== Mobile: show SKU + Add together, no horizontal scroll ===== */
+@media (max-width: 430px){
+
+  /* Compact header: show only "SKU" and "Add" */
+  #table-viewport .vhead{
+    display: grid;
+    grid-template-columns: 1fr 140px; /* left: SKU, right: Actions */
+    column-gap: 6px;
+  }
+  /* Hide all header cells except SKU (2) and Actions (9) */
+  #table-viewport .vhead > :not(:nth-child(2)):not(:nth-child(9)){
+    display: none !important;
+  }
+  #table-viewport .vhead > :nth-child(2){ text-align: left; }
+  #table-viewport .vhead > :nth-child(9){ text-align: right; }
+
+  /* Rows: 2-line layout with SKU on first line (bold), Description under it,
+     and the Actions (Qty + Add) column fixed on the right */
+  #table-viewport .vrow{
+    display: grid;
+    grid-template-columns: 1fr 140px; /* left grows, right is actions */
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "sku actions"
+      "desc actions";
+    align-items: center;
+    column-gap: 6px;
+    row-gap: 2px;
+    height: auto;                 /* let it grow to fit two lines */
+    min-height: 56px;             /* comfy tap target */
+    padding: 6px 8px;
+  }
+
+  /* Map cells to areas */
+  /* SKU (DOM col 2) -> area 'sku' */
+  #table-viewport .vrow > :nth-child(2){
+    grid-area: sku;
+    font-weight: 600;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;      /* clean truncation if long */
+  }
+
+  /* Description (DOM col 4) -> area 'desc' (small, muted) */
+  #table-viewport .vrow > :nth-child(4){
+    grid-area: desc;
+    font-size: 12px;
+    opacity: .8;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Actions (DOM col 9) stays actions on the right */
+  #table-viewport .vrow > :nth-child(9){
+    grid-area: actions;
+    justify-self: end;
+  }
+  /* Make sure the actions container fits */
+  .vrow .vactions{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 140px;                 /* matches grid column */
+    justify-content: flex-end;
+  }
+  .vrow .qty-input{
+    width: 60px;
+    height: 32px;
+    padding: 4px 6px;
+    font-size: 16px;              /* avoid iOS zoom */
+  }
+  .vrow .btn.add-to-cart{
+    height: 32px;
+    line-height: 30px;
+    padding: 0 10px;
+    font-size: 16px;              /* avoid iOS zoom */
+  }
+
+  /* Hide non-essential columns on mobile to free space:
+     Vendor(1), UOM(3), Helper(5), Multiple(6), Cost(7), Price(8) */
+  #table-viewport .vrow > :nth-child(1),
+  #table-viewport .vrow > :nth-child(3),
+  #table-viewport .vrow > :nth-child(5),
+  #table-viewport .vrow > :nth-child(6),
+  #table-viewport .vrow > :nth-child(7),
+  #table-viewport .vrow > :nth-child(8){
+    display: none !important;
+  }
+}
+
+/* ===== Mobile: SKU + Vendor + UOM visible, Actions fixed right ===== */
+@media (max-width: 430px){
+
+  /* Header shows only SKU and Add */
+  #table-viewport .vhead{
+    display: grid;
+    grid-template-columns: 1fr 140px; /* left: SKU, right: Actions */
+    column-gap: 6px;
+  }
+  #table-viewport .vhead > :not(:nth-child(2)):not(:nth-child(9)){
+    display: none !important;
+  }
+  #table-viewport .vhead > :nth-child(2){ text-align: left; }
+  #table-viewport .vhead > :nth-child(9){ text-align: right; }
+
+  /* Rows: 3-line left stack (SKU, Vendor, UOM) + Actions on right */
+  #table-viewport .vrow{
+    display: grid;
+    grid-template-columns: 1fr 140px;  /* left grows, right = actions */
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "sku    actions"
+      "vendor actions"
+      "uom    actions";
+    align-items: center;
+    column-gap: 6px;
+    row-gap: 2px;
+    height: auto;
+    min-height: 68px;               /* comfy tap area */
+    padding: 6px 8px;
+  }
+
+  /* Map cells to areas */
+  /* SKU (DOM col 2) */
+  #table-viewport .vrow > :nth-child(2){
+    grid-area: sku;
+    font-weight: 600;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Vendor (DOM col 1) */
+  #table-viewport .vrow > :nth-child(1){
+    grid-area: vendor;
+    font-size: 12px;
+    color: var(--muted, #666);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* UOM (DOM col 3) — small pill/badge */
+  #table-viewport .vrow > :nth-child(3){
+    grid-area: uom;
+    justify-self: start;
+    font-size: 11px;
+    line-height: 1.8;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--chip, #f6f7f8);
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Actions (DOM col 9) */
+  #table-viewport .vrow > :nth-child(9){
+    grid-area: actions;
+    justify-self: end;
+  }
+  .vrow .vactions{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 140px;                  /* matches right column width */
+    justify-content: flex-end;
+  }
+  .vrow .qty-input{
+    width: 60px;
+    height: 32px;
+    padding: 4px 6px;
+    font-size: 16px;               /* prevents iOS zoom */
+  }
+  .vrow .btn.add-to-cart{
+    height: 32px;
+    line-height: 30px;
+    padding: 0 10px;
+    font-size: 16px;               /* prevents iOS zoom */
+  }
+
+  /* Hide non-essentials on mobile to keep everything on one screen */
+  /* Description(4), Helper(5), Multiple(6), Cost(7), Price(8) */
+  #table-viewport .vrow > :nth-child(4),
+  #table-viewport .vrow > :nth-child(5),
+  #table-viewport .vrow > :nth-child(6),
+  #table-viewport .vrow > :nth-child(7),
+  #table-viewport .vrow > :nth-child(8){
+    display: none !important;
+  }
+}
+/* ===== MOBILE FIX: force SKU+Vendor+UOM left, Qty/Add right (iPhone) ===== */
+@media (max-width: 430px){
+
+  /* 1) Header: show only SKU + Actions, hide others */
+  #table-viewport .vhead{
+    display: grid !important;
+    grid-template-columns: 1fr 140px !important;
+    column-gap: 6px !important;
+  }
+  #table-viewport .vhead > *{ display: none !important; }
+  #table-viewport .vhead > :nth-child(2){ display:block !important; text-align:left; }
+  #table-viewport .vhead > :nth-child(9){ display:block !important; text-align:right; }
+
+  /* 2) Rows: two columns (left stack = 3 lines), right = actions  */
+  #table-viewport .vrow{
+    position: absolute;            /* keep virtualization intact */
+    left: 0; right: 0;
+    display: grid !important;
+    grid-template-columns: 1fr 140px !important;  /* left grows, right fixed */
+    grid-template-rows: auto auto auto !important;
+    grid-template-areas:
+      "sku     actions"
+      "vendor  actions"
+      "uom     actions";
+    align-items: center;
+    column-gap: 6px;
+    row-gap: 2px;
+    height: auto !important;
+    min-height: 68px;              /* comfy tap target, no overlap */
+    padding: 6px 8px;
+  }
+
+  /* 3) Start by hiding everything, then explicitly show the 4 cells we want */
+  #table-viewport .vrow > *{ display:none !important; }
+  /* SKU (DOM col 2) */
+  #table-viewport .vrow > :nth-child(2){
+    display:block !important;
+    grid-area: sku !important;
+    font-weight: 600;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    position: static !important;   /* ensure not sticky */
+    left: auto !important;
+    z-index: auto !important;
+    border-right: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+  /* Vendor (DOM col 1) */
+  #table-viewport .vrow > :nth-child(1){
+    display:block !important;
+    grid-area: vendor !important;
+    font-size: 12px;
+    color: var(--muted);
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  /* UOM (DOM col 3) */
+  #table-viewport .vrow > :nth-child(3){
+    display:inline-block !important;
+    grid-area: uom !important;
+    font-size: 11px; line-height: 1.8;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--chip, #f6f7f8);
+    max-width: 100%;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  /* Actions (DOM col 9) */
+  #table-viewport .vrow > :nth-child(9){
+    display:block !important;
+    grid-area: actions !important;
+    justify-self: end;
+  }
+  .vrow .vactions{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 140px;                  /* match actions column */
+    justify-content: flex-end;
+  }
+  .vrow .qty-input{
+    width: 60px; height: 32px; padding: 4px 6px; font-size: 16px;
+  }
+  .vrow .btn.add-to-cart{
+    height: 32px; line-height: 30px; padding: 0 10px; font-size: 16px;
+  }
+
+  /* 4) No horizontal scroll needed; other columns stay hidden cleanly */
+}
+@media (max-width: 430px){
+  /* Rows: 3-line left stack + Actions on right */
+  #table-viewport .vrow{
+    height: 72px !important;    /* fixed height so virtualization is predictable */
+    grid-template-rows: 1fr 1fr 1fr;
+  }
+}
+/* ===== Description bottom sheet ===== */
+#desc-sheet[hidden]{ display:none !important; }
+
+#desc-sheet .ds-backdrop{
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.28);
+  backdrop-filter: blur(2px);
+}
+
+#desc-sheet .ds-panel{
+  position: fixed; left: 0; right: 0;
+  bottom: 0;
+  max-width: 720px;
+  margin: 0 auto;
+  background: #fff;
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -8px 30px rgba(0,0,0,.25);
+  padding: 12px 14px 16px;
+}
+
+#desc-sheet .ds-header{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:8px; margin-bottom: 8px;
+}
+#desc-sheet .ds-close{ min-width: 36px; height: 32px; }
+
+#desc-sheet .ds-body{
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px 10px;
+  font-size: 14px;
+}
+#desc-sheet .ds-row{ display: contents; }
+#desc-sheet .ds-row.big .k{ align-self: start; margin-top: 4px; }
+#desc-sheet .k{ color:#666; }
+#desc-sheet .v{ color:#111; overflow-wrap:anywhere; }
+
+@media (max-width: 430px){
+  #desc-sheet .ds-panel{
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+}
+/* ===== Description bottom sheet ===== */
+#desc-sheet[hidden]{ display:none !important; }
+
+#desc-sheet .ds-backdrop{
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.28);
+  backdrop-filter: blur(2px);
+}
+
+/* Backdrop covers the screen */
+#desc-sheet .ds-backdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+}
+
+/* Centered modal */
+#desc-sheet .ds-panel{
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+
+  width: min(720px, calc(100vw - 24px));
+  max-height: min(80vh, 720px);
+
+  background: #fff;
+  border-radius: 14px;        /* full radius for a modal box */
+  box-shadow: 0 12px 40px rgba(0,0,0,.25);
+  padding: 12px 14px 12px;
+
+  overflow: auto;             /* scroll inside if needed */
+  will-change: transform;
+}
+
+
+#desc-sheet .ds-header{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:8px; margin-bottom: 8px;
+}
+#desc-sheet .ds-close{ min-width: 36px; height: 32px; }
+
+#desc-sheet .ds-body{
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px 10px;
+  font-size: 14px;
+}
+#desc-sheet .ds-row{ display: contents; }
+#desc-sheet .ds-row.big .k{ align-self: start; margin-top: 4px; }
+#desc-sheet .k{ color:#666; }
+#desc-sheet .v{ color:#111; overflow-wrap:anywhere; }
+
+#desc-sheet .ds-actions{
+  display:flex; align-items:center; justify-content:flex-end;
+  gap:10px; margin-top: 12px;
+}
+#desc-sheet .ds-qty{
+  width: 80px; height: 36px; padding: 6px 8px;
+  font-size: 16px;                /* prevents iOS zoom */
+  border: 1px solid var(--border); border-radius: 10px;
+}
+#desc-sheet .ds-add{
+  height: 36px; padding: 0 14px; font-size: 16px; /* prevents iOS zoom */
+  border-radius: 10px;
+}
+
+@media (max-width: 430px){
+  #desc-sheet .ds-panel{
+    border-top-left-radius: 16px; border-top-right-radius: 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}
+/* make sure we’re selecting the right class name */
+#table-viewport .cell-desc{
+  min-width: 0;          /* allow shrinking inside the grid */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Ensure the actions column has a fixed min-width and stays on the far right */
+:root {
+  --col-actions: 180px; /* increase if buttons feel cramped */
+}
+
+.vrow .vactions {
+  justify-self: end;   /* aligns to the right edge of its grid cell */
+  display: inline-flex;
+  align-items: center;
+  gap: 50px;
+  min-width: 160px;    /* prevents overlapping */
+}
+/* Make the sheet a top-level stacking context */
+#desc-sheet{
+  position: fixed;
+  inset: 0;              /* top/right/bottom/left: 0 */
+  z-index: 9000;         /* higher than .vhead's z-index */
+}
+
+/* Dim + block clicks behind the modal */
+#desc-sheet .ds-backdrop{
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  backdrop-filter: blur(2px);
+}
+
+/* Centered panel (use this or your bottom-sheet version) */
+#desc-sheet .ds-panel{
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+
+  width: min(720px, calc(100vw - 24px));
+  max-height: min(80vh, 720px);
+  overflow: auto;
+
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.25);
+  padding: 12px 14px 12px;
+  z-index: 9001;        /* above backdrop */
+}
+
+/* Optional: prevent body scroll when modal is open */
+body.no-scroll { overflow: hidden; }
+@media (max-width: 430px){
+  /* Only allow taps on the SKU cell and the actions block */
+  #table-viewport .vrow > :not(.cell-sku):not(.vactions){
+    pointer-events: none;
+  }
+  /* Keep qty/add fully interactive */
+  #table-viewport .vactions,
+  #table-viewport .vactions *{
+    pointer-events: auto;
+  }
+
+  /* Ensure the SKU cell isn’t overlaying other cells */
+  #table-viewport .vrow > .cell-sku{
+    position: static;   /* was sticky in some layouts */
+    left: auto;
+    z-index: auto;
+    box-shadow: none;   /* just in case */
+    background: transparent;
+  }
+}
+/* Entire row is clickable; actions stay normal */
+#table-viewport .vrow {
+  cursor: pointer;
+}
+#table-viewport .vrow .vactions,
+#table-viewport .vrow .vactions * {
+  cursor: default;
+}

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Your Cart — Product & VPO Calculator</title>
+  <link rel="stylesheet" href="style.css"/>
+    <link rel="stylesheet" href="cart.css" />
+
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+
+</head>
+<body>
+
+  <main>
+    <header class="cart-header">
+      <div class="cart-actions" role="toolbar" aria-label="Cart actions">
+        <a href="index.html" class="btn btn--ghost btn--back btn--icon-only" aria-label="Continue browsing">
+          
+          <span class="btn__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" focusable="false" aria-hidden="true">
+              <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="btn__text">Continue Browsing</span>
+        </a>
+        <h1 class="h2">Your Cart</h1>
+        <button id="clearCart" class="btn danger" aria-label="Clear all items">Clear All</button>
+      </div>
+    </header>
+
+    <section id="fillin-section" class="card" aria-labelledby="fillinTitle">
+      <div id="airtableBanner">
+        <strong>Missing Airtable API Key.</strong> In your browser console run:
+        <code>localStorage.setItem('AIRTABLE_API_KEY','YOUR_AIRTABLE_PAT_HERE')</code>
+      </div>
+      <header class="stack" style="margin-bottom: 8px;">
+        <strong id="fillinTitle">Fill-In Request Details</strong>
+      </header>
+
+   
+
+        <div class="field">
+          <label class="field-label" for="branchSelect">Branch</label>
+          <select id="branchSelect"><option value="">—</option></select>
+        </div>
+           <div class="grid" role="group" aria-label="Fill-In Request Fields">
+        <div class="field">
+          <label class="field-label" for="customerSelect">Customer</label>
+          <select id="customerSelect"><option value="">—</option></select>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="fieldManagerSelect">Field Manager</label>
+          <select id="fieldManagerSelect"><option value="">—</option></select>
+        </div>
+
+   
+
+
+        <div class="field">
+          <label class="field-label" for="jobName">Job Name</label>
+          <input id="jobName" type="text" placeholder="Job Name" />
+        </div>
+
+<div class="field">
+  <label class="field-label" for="subcontractorCompanySelect">Subcontractor Company Name</label>
+  <select id="subcontractorCompanySelect">
+    <option value="">—</option>
+  </select>
+</div>
+
+  
+
+      <div class="sep"></div>
+      <div class="right">
+        <span id="airtableStatus" class="pill" aria-live="polite" aria-atomic="true">Idle</span>
+        <button id="saveAirtable" class="btn primary">Save to Airtable</button>
+      </div>
+    </section>
+
+    <section id="cart-section" class="card" aria-labelledby="cartTitle">
+      <header class="stack" style="margin-bottom: 8px;">
+        <strong id="cartTitle">Selected SKUs</strong>
+      </header>
+
+      <table id="cart-table">
+        <thead>
+          <tr>
+            <th>Vendor</th>
+            <th>SKU</th>
+            <th>Description</th>
+            <th>Qty</th>
+            <th>Unit (Sell)</th>
+            <th>Line Total</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <!-- Labor -->
+      <div id="labor-list">
+        <div class="labor-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;">
+          <strong>Labor</strong>
+          <div><button id="addLabor" class="btn">+ Add Labor Line</button></div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div id="globalMarginWrap">
+        <div class="field">
+          <label class="field-label" for="globalMarginPct">Material Margin (%)</label>
+          <input id="globalMarginPct" type="number" min="0" step="1" value="30" />
+        </div>
+      </div>
+
+      <div id="totals" aria-live="polite" aria-atomic="true">
+        <div class="label">Products Total:</div><div class="value" id="productTotal">$0.00</div>
+        <div class="label">Labor Total:</div>   <div class="value" id="laborTotal">$0.00</div>
+        <div class="label grand">Grand Total:</div><div class="value grand" id="grandTotal">$0.00</div>
+      </div>
+
+    
+    </section>
+  </main>
+
+  <div id="toast" role="status" aria-live="polite" aria-atomic="true" style="display:none;">Done</div>
+
+  <script src="airtable.service.js"></script>
+
+<script src="airtable.service.js"></script>
+<script src="cart.js"></script>
+<script src="patch.js"></script>
+
+
+<script>
+(function(){
+  function setNeededByOptions(){
+    var el = document.getElementById("neededBySelect");
+    if (!el) return;
+    while (el.firstChild) el.removeChild(el.firstChild);
+    el.appendChild(new Option("— Select —", "", true, false));
+    ["ASAP","Tomorrow"].forEach(function(v){
+      el.appendChild(new Option(v, v));
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setNeededByOptions);
+  } else {
+    setNeededByOptions();
+  }
+})();
+
+(function(){
+  function setReasonOptions(){
+    var el = document.getElementById("reasonSelect");
+    if (!el) return;
+    while (el.firstChild) el.removeChild(el.firstChild);
+    el.appendChild(new Option("— Select —", "", true, false));
+    [
+      "Takeoff Incorrect",
+      "Theft",
+      "Subcontractor Installed Incorrectly",
+      "Missing Options",
+      "Ordered Incorrectly",
+      "Scope Not Followed",
+      "Damaged",
+      "Scope Has Changed",
+      "Borrowed Material For Another Job",
+      "Warranty Item",
+      "Other"
+    ].forEach(function(v){ el.appendChild(new Option(v, v)); });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setReasonOptions);
+  } else {
+    setReasonOptions();
+  }
+})();
+</script>
+
+</body>
+</html>

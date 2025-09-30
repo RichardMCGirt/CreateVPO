@@ -1,0 +1,13 @@
+#loadingBarOverlay{
+  position:fixed; inset:0; display:none;
+  align-items:center; justify-content:center;
+  background:rgba(10,12,16,.66); z-index:99999; backdrop-filter:saturate(1.2) blur(2px);
+}
+.loading-panel{
+  width:min(720px,90vw); padding:18px 16px 14px; border-radius:16px;
+  background:#0f1220; color:#e8eefc; box-shadow:0 10px 30px rgba(0,0,0,.35);
+}
+.loading-label{ font:600 16px/1.2 system-ui,Segoe UI,Roboto,sans-serif; margin-bottom:10px; }
+.loading-track{ height:10px; border-radius:999px; background:#1d2336; overflow:hidden; }
+.loading-fill{ height:100%; width:0%; background:#7aa2ff; transition:width .18s ease; }
+.loading-meta{ font:500 13px/1.25 system-ui,Segoe UI,Roboto,sans-serif; opacity:.85; margin-top:8px; }

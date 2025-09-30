@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Product Portal — Select Items, Add Labor</title>
+  <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="loading.css" />
+
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+</head>
+<body>
+
+  <!-- Cart button (fixed, top-right) -->
+  <button id="cartFab" class="cart-fab" aria-label="Open cart">
+    <span class="cart-emoji" aria-hidden="true">🛒</span>
+    <span id="cartCountBadge" class="badge">0</span>
+  </button>
+
+ 
+  <!-- Controls -->
+  <div id="controls" class="card">
+    <input id="searchInput" type="search" placeholder="Search by SKU or Description…" aria-label="Search by SKU or description" disabled />
+    <select id="vendorFilter" aria-label="Filter by vendor" disabled>
+      <option value="">All vendors</option>
+    </select>
+    <select id="categoryFilter" aria-label="Filter by category" disabled>
+      <option value="">All categories</option>
+    </select>
+    <button id="clearFilters" class="btn" disabled>Clear</button>
+  
+</div>
+<!-- Hidden-until-filter hint -->
+<p id="bg-hint" style="display:block;margin:10px 0;color:#555;font-style:italic;">
+</p>
+<div class="status-row" id="dataStatusRow" aria-live="polite" aria-atomic="true">
+      <span id="dataStatus" class="status-pill" data-state="idle">Not loaded</span>
+      <button id="refreshData" class="btn" type="button">Refresh</button>
+    </div>
+
+</div>
+<div class="status-row" id="dataStatusRow" aria-live="polite" aria-atomic="true">
+  <span id="dataStatus" class="status-pill" data-state="idle"></span>
+  <span id="fetch-count" class="count-badge" style="margin-left:8px;"></span>
+</div>
+
+  <!-- Category chips (mobile-friendly quick filter) -->
+  <div id="categoryChips" class="chips scroller hidden" aria-label="Quick category filters"></div>
+  
+  </section>
+
+<!-- Virtualized table (fast for 10k+ rows) -->
+<div id="table-viewport" aria-label="Products table" style="display:none;">
+  <div class="vhead">
+    <div>Vendor</div><div>SKU</div><div>UOM</div><div>Description</div>
+    <div>Helper</div><div>Multiple</div><div>Cost</div><div>QTY</div>
+    <div class="col-actions"></div> 
+  </div>
+  <div id="table-spacer"></div>
+</div>
+
+<!-- Toast -->
+  <div id="toast" role="status" aria-live="polite">Done</div>
+
+<!-- Loading overlay -->
+<div id="loadingBarOverlay" role="status" aria-live="polite" style="display:none;">
+  <div class="loading-panel" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div id="loadingBarLabel" class="loading-label">Starting…</div>
+    <div class="loading-track">
+      <div id="loadingBar" class="loading-fill" style="width:5%"></div>
+    </div>
+    <div id="loadingBarMeta" class="loading-meta"></div>
+  </div>
+</div>
+
+<div id="gentleModeRow" class="row-gap" style="margin:6px 0 10px 0; display:none;">
+  <label style="display:inline-flex;align-items:center;gap:8px;font-size:0.9rem;">
+    <input id="gentleMode" type="checkbox" checked /> Gentle mode (prevent 429s)
+  </label>
+</div>
+
+<!-- ===== Description Sheet (mobile/desktop) ===== -->
+<div id="desc-sheet" hidden>
+  <div class="ds-backdrop"></div>
+  <div class="ds-panel" role="dialog" aria-modal="true" aria-labelledby="ds-title">
+    <div class="ds-header">
+      <strong id="ds-title">Item</strong>
+      <button id="ds-close" class="btn ds-close" aria-label="Close">✕</button>
+    </div>
+
+    <div class="ds-body">
+      <div class="ds-row"><span class="k">Vendor</span><span class="v" id="ds-vendor">—</span></div>
+      <div class="ds-row"><span class="k">SKU</span><span class="v" id="ds-sku">—</span></div>
+      <div class="ds-row"><span class="k">UOM</span><span class="v" id="ds-uom">—</span></div>
+      <div class="ds-row"><span class="k">Helper</span><span class="v" id="ds-helper">—</span></div>
+      <div class="ds-row"><span class="k">Multiple</span><span class="v" id="ds-multiple">—</span></div>
+      <div class="ds-row big"><span class="k">Description</span><span class="v" id="ds-desc">—</span></div>
+      <div class="ds-row"><span class="k">Unit Price</span><span class="v" id="ds-price">—</span></div>
+    </div>
+
+    <form id="ds-form" class="ds-actions" autocomplete="off">
+      <input id="ds-qty"
+             type="text"
+             inputmode="numeric"
+             pattern="[0-9]*"
+             aria-label="Quantity"
+             placeholder="Qty"
+             value="0"
+             minlength="1"
+             class="ds-qty">
+      <button id="ds-add" type="submit" class="btn ds-add">Add</button>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+<script src="database.js"></script>
+
+
+<script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
+<script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
+</body>
+</html>
