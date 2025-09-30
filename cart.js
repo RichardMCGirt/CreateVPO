@@ -99,7 +99,7 @@ async function refreshSubcontractorsForBranch(service) {
   }
 }
 async function initDropdowns(service) {
-  setStatus("Loading dropdowns…", "info");
+  setStatus("", "info");
   ["branch","fieldMgr","neededBy","reason"].forEach(k => els[k]?.setAttribute("aria-busy","true"));
   try {
     const [{ options: fmOptions, idToLabel: fmIdToLabel, labelToId: fmLabelToId },
@@ -349,7 +349,7 @@ function setSaved(nextState) {
 
   async function initDropdowns(service) {
     
-    setStatus("Loading dropdowns…", "info");
+    setStatus("", "info");
     ["branch","fieldMgr","neededBy","reason"].forEach(k => els[k]?.setAttribute("aria-busy","true"));
     try {
       const [{ options: fmOptions, idToLabel: fmIdToLabel, labelToId: fmLabelToId },
