@@ -49,6 +49,28 @@ function updateTableVisibility() {
   if (tc) tc.style.display = show ? "" : "none";
   toggleBgHint?.(); // keep your background hint in sync
 }
+// --- Sort: Vendor (A→Z), then SKU (numeric-aware) ---
+function sortRowsByVendorThenSku(rows) {
+  const arr = Array.isArray(rows) ? rows.slice() : [];
+
+  const vKey = r => String(r?.vendor ?? "").trim().toLocaleLowerCase();
+  const sKey = r => String(r?.sku ?? "").trim();
+
+  return arr.sort((a, b) => {
+    const av = vKey(a), bv = vKey(b);
+
+    // Vendor A→Z; empty vendors go last
+    if (av && !bv) return -1;
+    if (!av && bv) return 1;
+    if (av !== bv) return av.localeCompare(bv, undefined, { sensitivity: "base" });
+
+    // SKU A→Z, numeric-aware (e.g., ABC2 < ABC10)
+    const as = sKey(a), bs = sKey(b);
+    if (as && !bs) return -1;
+    if (!as && bs) return 1;
+    return as.localeCompare(bs, undefined, { numeric: true, sensitivity: "base" });
+  });
+}
 
 function isFresh(savedAt){
   try { return (Date.now() - Number(savedAt || 0)) < PRODUCT_CACHE_TTL_MS; }
@@ -794,9 +816,11 @@ function renderTableAllVirtual(rows) {
   const vp = document.getElementById("table-viewport");
   if (vp) vp.style.display = "";
 
-  window.FILTERED_ROWS = Array.isArray(rows) ? rows : [];
+  // ✅ Always sort by vendor then SKU before render
+  window.FILTERED_ROWS = sortRowsByVendorThenSku(Array.isArray(rows) ? rows : []);
   renderVirtualTableInit();
 }
+
 
 // Compatibility shim if something calls this
 function initVirtualTable() {
@@ -3564,6 +3588,40 @@ function __renderFromCacheNow(reason = "pageshow"){
     return false;
   }
 }
+/* ---- Safe wrapper installer (sort before each virtual render) ---- */
+(function installVendorSortWrapper() {
+  if (window.__vendorSortWrapped) return; // prevent double-wrap
+  const wrap = () => {
+    const fn = window.renderVirtualTableInit;
+    if (typeof fn !== "function") return false;
+
+    const original = fn;
+    window.renderVirtualTableInit = function () {
+      if (Array.isArray(window.FILTERED_ROWS)) {
+        window.FILTERED_ROWS = sortRowsByVendorThenSku(window.FILTERED_ROWS);
+      }
+      return original.apply(this, arguments);
+    };
+    window.__vendorSortWrapped = true;
+    return true;
+  };
+
+  // Try immediately, then on DOM ready, then retry briefly (handles late/deferred loads)
+  if (wrap()) return;
+
+  const onReady = () => { wrap(); };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", onReady, { once: true });
+  } else {
+    onReady();
+  }
+
+  let tries = 0, maxTries = 20;
+  const timer = setInterval(() => {
+    if (window.__vendorSortWrapped) { clearInterval(timer); return; }
+    if (wrap() || ++tries >= maxTries) clearInterval(timer);
+  }, 100);
+})();
 
 window.addEventListener("pageshow", (ev) => {
   if (ev.persisted) { if (__renderFromCacheNow("BFCache")) return; }
