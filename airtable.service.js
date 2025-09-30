@@ -528,3 +528,67 @@ const FEATURES = Object.freeze({
   global.AIRTABLE_LOGGER = AIRTABLE_LOGGER;
 
 })(window);
+(function(){
+  "use strict";
+
+  /**
+   * Persist a select's value in localStorage and restore it when options appear.
+   * Works even if options are added later (e.g., after an async fetch).
+   *
+   * @param {HTMLSelectElement|string} elOrSelector - The <select> or a CSS selector.
+   * @param {string} key - localStorage key to use.
+   */
+  function persistSelect(elOrSelector, key){
+    const sel = (typeof elOrSelector === "string")
+      ? document.querySelector(elOrSelector)
+      : elOrSelector;
+    if (!sel || sel.tagName !== "SELECT" || !key) return;
+
+    const LS_KEY = "persist_select__" + key;
+
+    // Save on change
+    sel.addEventListener("change", () => {
+      try { localStorage.setItem(LS_KEY, sel.value ?? ""); } catch {}
+    });
+
+    // Try an immediate restore (in case options are already present)
+    tryRestore();
+
+    // If options are added later, observe and restore once
+    const obs = new MutationObserver(() => tryRestore(true));
+    obs.observe(sel, { childList: true });
+
+    function tryRestore(fromObserver = false){
+      const saved = (function(){ try { return localStorage.getItem(LS_KEY) || ""; } catch { return ""; } })();
+      if (!saved) return;
+
+      // If the option exists, set and (if from observer) stop observing.
+      const has = Array.from(sel.options).some(o => o.value === saved);
+      if (has){
+        sel.value = saved;
+        // Fire a change event so any dependent logic runs
+        sel.dispatchEvent(new Event("change", { bubbles: true }));
+        if (fromObserver) obs.disconnect();
+      }
+    }
+  }
+
+  /**
+   * Auto-bind: any <select data-persist-key="..."> will be persisted automatically.
+   */
+  document.addEventListener("DOMContentLoaded", () => {
+    // 1) Auto-bind all selects that opt in via data attribute
+    document.querySelectorAll("select[data-persist-key]").forEach(sel => {
+      const key = sel.getAttribute("data-persist-key");
+      persistSelect(sel, key);
+    });
+
+    // 2) (Optional) Explicit binds by ID if you prefer:
+    // persistSelect("#branchSelect", "branch");
+    // persistSelect("#neededBySelect", "neededBy");
+    // persistSelect("#reasonSelect", "reason");
+  });
+
+  // Expose in case you want to call it manually elsewhere
+  window.persistSelect = persistSelect;
+})();

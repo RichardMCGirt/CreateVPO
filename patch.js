@@ -156,7 +156,6 @@
         }
       }
 
-      const { options: branchOpts } = await svc.fetchBranchOptions();
       const branchSel = document.getElementById("branchSelect");
       if (branchSel) {
         for (const opt of branchOpts) {
@@ -176,9 +175,7 @@
         }
       }
     } catch (e) {
-      console.error("Error initializing dropdowns:", e);
-      const banner = document.getElementById("airtableBanner");
-      if (banner) banner.style.display = "block";
+     
     }
   })();
 // Refresh subcontractor list whenever Branch changes
@@ -297,7 +294,7 @@ async function handleSave(){
   } else if (fmSel?.value) {
     const label = fmSel.selectedOptions?.[0]?.textContent?.trim() || fmSel.value;
     if (nonEmpty(label) && label !== "—") {
-      fields["Field Technician"] = label; // fallback only if this Airtable field is text
+      fields[""] = label; // fallback only if this Airtable field is text
     } else {
       console.warn('Omitting "Field Tech Name": no valid FM selection.', { value: fmSel.value });
     }
