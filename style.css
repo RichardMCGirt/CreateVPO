@@ -528,14 +528,12 @@ tbody tr:last-child td { border-bottom: none; }
   display: none !important;
 }
 
-/* header */
-#table-viewport .vhead > div:nth-child(5),
-#table-viewport .vhead > div:nth-child(6) {
-  display: none;
-}
+
 
 /* body rows */
-#table-viewport .vrow > div:nth-child(5) {
+#table-viewport .vrow > div:nth-child(5),
+#table-viewport .vrow > div:nth-child(6),
+#table-viewport .vrow > div:nth-child(7) {
   display: none;
 }
 
@@ -555,10 +553,7 @@ tbody tr:last-child td { border-bottom: none; }
   --col-sku:    140px;
   --col-uom:     70px;
 --col-desc: minmax(240px, 1fr);  /* was 1fr */  
---col-helper: 180px;
-  --col-mult:    90px;
-  --col-cost:    90px;
-  --col-price:  100px;
+
   --col-actions:150px;
 }
 
@@ -571,10 +566,7 @@ tbody tr:last-child td { border-bottom: none; }
     var(--col-sku)
     var(--col-uom)
     var(--col-desc)
-    var(--col-helper)
-    var(--col-mult)
-    var(--col-cost)
-    var(--col-price)
+    
     var(--col-actions);
   column-gap: 8px;
   align-items: center;
