@@ -112,38 +112,6 @@ function $(id){ return document.getElementById(id); }
 function clamp(n, lo, hi){ return Math.max(lo, Math.min(hi, n)); }
 
 
-async function __fetchAllRowsFromNetwork() {
-  // Reset paging/global state before a real fetch
-  try { showLoadingBar?.(true, "Loading…"); } catch {}
-  bumpLoadingTo?.(5, "Starting…");
-
-  ALL_ROWS = [];
-  FILTERED_ROWS = [];
-  if (typeof _pageCursor !== "undefined") _pageCursor = 0;
-  if (typeof _noMorePages !== "undefined") _noMorePages = false;
-  if (typeof __ROWS_DONE !== "undefined") __ROWS_DONE = false;
-  FULLY_LOADED = false;
-
-  updateDataStatus?.("loading", "Fetching latest data…");
-
-  // Prefer a single “fetch everything” if you have it:
-  if (typeof preloadAllPages === "function") {
-    await preloadAllPages(); // should populate ALL_ROWS
-  } else if (typeof loadNextPage === "function") {
-    // Fallback: drain pages
-    let guard = 0;
-    while (!_noMorePages && guard++ < 10000) { // guard against infinite loops
-      await loadNextPage();
-    }
-  } else {
-    throw new Error("No fetch method available: define preloadAllPages() or loadNextPage().");
-  }
-
-  if (!Array.isArray(ALL_ROWS)) {
-    throw new Error("Fetch completed but ALL_ROWS is not an array.");
-  }
-}
-
 /* =========================
    3) CACHE-FIRST listSheetData
    ========================= */
@@ -415,10 +383,6 @@ function logFetchCount(where, rowsLike, extra = {}) {
     ? rowsLike.length
     : (rowsLike?.result?.values?.length ?? 0);
 
-  const total = Array.isArray(window.ALL_ROWS) ? window.ALL_ROWS.length : 0;
-  const expected = Number(getExpectedRowCount?.() || window.EXPECTED_ROW_COUNT || 0);
-
- 
 }
 
 async function __fetchAllRowsFromNetwork() {
@@ -846,6 +810,46 @@ function __maybeHideOverlay(reason = ""){
   try { if (typeof setControlsEnabledState === "function") setControlsEnabledState(); } catch {}
   console.debug("[loading] overlay hidden", reason);
 }
+function __gapiReady() {
+  try {
+    return !!(window.gapi &&
+              gapi.client &&
+              gapi.client.sheets &&
+              gapi.client.sheets.spreadsheets &&
+              gapi.client.sheets.spreadsheets.values);
+  } catch (_) {
+    return false;
+  }
+}
+
+
+async function __ensureGapi() {
+  if (__gapiReady()) return;
+
+  // If the gapi loader script hasn't fully initialized yet, wait for it
+  await new Promise((resolve) => {
+    if (window.gapi && gapi.load) return resolve();
+    // Poll briefly until gapi.load appears (scripts are async/defer)
+    const start = Date.now();
+    const t = setInterval(() => {
+      if (window.gapi && gapi.load) { clearInterval(t); resolve(); }
+      else if (Date.now() - start > 5000) { clearInterval(t); resolve(); } // best-effort
+    }, 50);
+  });
+
+  // Load the client lib, then init with API key + discovery doc
+  await new Promise((resolve) => {
+    if (!window.gapi || !gapi.load) return resolve(); // tolerate missing loader
+    gapi.load("client", resolve);
+  });
+
+  if (!window.gapi || !gapi.client) return; // tolerate missing client (won’t crash later)
+
+  await gapi.client.init({
+    apiKey: (typeof API_KEY !== "undefined") ? API_KEY : "",
+    discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
+  });
+}
 
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
@@ -1140,7 +1144,7 @@ async function withBackoff429(fn, attempts=5){
   let lastErr;
   for (let i=0;i<attempts;i++){
     try{
-      await __rateLimitGate();
+      await __rateLimitGate?.();
       return await fn();
     }catch(e){
       const status = e?.status || e?.result?.error?.code;
@@ -1150,9 +1154,9 @@ async function withBackoff429(fn, attempts=5){
         const h = e?.headers;
         ra = Number(h?.['retry-after'] || h?.get?.('Retry-After') || 0);
       } catch {}
-      const base = ra > 0 ? ra : Math.pow(2, i);
-      const jitter = (Math.random()*0.4)+0.8;
-      const delay = Math.min(30_000, base*1000*jitter);
+      const base = ra ? (ra*1000) : (400 + i*400);
+      const jitter = 0.7 + Math.random()*0.6;
+      const delay = Math.floor(base * jitter);
       await new Promise(r => setTimeout(r, delay));
       lastErr = e;
     }
@@ -1160,13 +1164,7 @@ async function withBackoff429(fn, attempts=5){
   throw lastErr;
 }
 
-async function sheetsValuesGet(params){
-  return await withBackoff429(() => gapi.client.sheets.spreadsheets.values.get(params));
-}
 
-async function sheetsSpreadsheetsGet(params){
-  return await withBackoff429(() => gapi.client.sheets.spreadsheets.get(params));
-}
 
 const __headerMemo = new Map();
 async function getHeaderCached(spreadsheetId, title){
@@ -1211,12 +1209,6 @@ let LABOR_LINES = Array.isArray(window.LABOR_LINES) ? window.LABOR_LINES : (wind
 const CART_URL = "cart.html";
 const CART_WINDOW_NAME = "vanir_cart_tab";
 
-function openOrFocusCart(e){
-  if (e) e.preventDefault();
-  const w = window.open(CART_URL, CART_WINDOW_NAME); 
-  try { w && w.focus && w.focus(); } catch {}
-  try { cartChannel?.postMessage({ type: "focus" }); } catch {}
-}
 
  document.addEventListener('DOMContentLoaded', () => {
     const row = document.getElementById('gentleModeRow');
@@ -1514,21 +1506,28 @@ function hasFreshCache() {
   }
 }
 
+// database.js
 async function gapiLoaded() {
+  // ⛔ If we reloaded just to switch modes AND we have fresh cache, don't touch the network
+  if (window.__SKIP_BOOTSTRAP && typeof hasFreshCache7d === "function" && hasFreshCache7d()) {
+    console.debug("[gapiLoaded] skip: mode switch + cache");
+    return;
+  }
+
   gapi.load("client", async () => {
-    const skipOverlay = hasFreshCache7d(); 
+    const skipOverlay = (typeof hasFreshCache7d === "function") && hasFreshCache7d();
     try {
-      
       if (!skipOverlay) {
         showLoadingBar?.(true, "Initializing…");
         bumpLoadingTo?.(8, "Loading Google API client…");
       }
-
       await gapi.client.init({
         apiKey: (typeof API_KEY !== "undefined") ? API_KEY : "",
         discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
       });
 
+
+      // cache-first path, then (only if needed) network:
       if (hasFreshCache7d?.()) {
         const cached = loadProductCache7d?.();
         if (cached && Array.isArray(cached.rows) && cached.rows.length) {
@@ -1537,18 +1536,19 @@ async function gapiLoaded() {
           window.FULLY_LOADED = true;
           setControlsEnabledState?.();
           refreshCategoriesFromAllRows?.();
-          refreshVendorsFromAllRows();   
+          refreshVendorsFromAllRows();
           applyFilters?.({ render: true, sort: "stable" });
           wireControlsOnce?.();
           const ts = cached.savedAt ? new Date(cached.savedAt).toLocaleTimeString() : "";
           updateDataStatus?.("fresh", ts ? `Up to date • ${ts}` : "Up to date");
           bumpLoadingTo?.(100, "Ready");
           showLoadingBar?.(false);
-          return; 
+          return; // ✅ no network
         }
       }
+
       bumpLoadingTo?.(25, "Fetching product data…");
-await listSheetData({ forceNetwork: false });
+      await listSheetData({ forceNetwork: false });
       bumpLoadingTo?.(85, "Finalizing table…");
       applyFilters?.({ render: true, sort: "stable" });
       setControlsEnabledState?.();
@@ -1556,7 +1556,7 @@ await listSheetData({ forceNetwork: false });
       bumpLoadingTo?.(100, "Ready");
       setTimeout(() => { try { __maybeHideOverlay?.(); } catch {} }, 0);
       setTimeout(() => showLoadingBar?.(false), 200);
-    } catch (e) {
+  } catch (e) {
       console.error("Error loading sheet (no-login mode):", e);
       setTimeout(() => { try { __maybeHideOverlay?.(); } catch {} }, 0);
       setTimeout(() => showLoadingBar?.(false), 200);
@@ -1564,6 +1564,7 @@ await listSheetData({ forceNetwork: false });
     }
   });
 }
+
 
 async function updateAllPricingFromSheet() {
   try {
@@ -2956,27 +2957,20 @@ function updateDataStatus(state = "idle", message = ""){
   );
 }
 
-(function bindRefreshOnce(){
-  const btn = document.getElementById("refreshData");
-  if (!btn || btn._bound) return;
-  btn._bound = true;
+// Example: if your refresh button wiring looks like this:
+const btn = document.getElementById("refreshData"); // or whatever id you use
+if (btn) {
   btn.addEventListener("click", async () => {
     try {
-      clearProductCache(); 
-      updateDataStatus("loading", "Refreshing…");
-      ALL_ROWS = []; FILTERED_ROWS = []; _pageCursor = 0; _noMorePages = false;
-      showSkeletonRows?.(8);
-      await loadNextPage(); 
-      removeSkeletonRows?.();
-      saveProductCache(ALL_ROWS); 
-      updateDataStatus("fresh", "Up to date • " + new Date().toLocaleTimeString());
-      showToast?.("Data refreshed.");
-    } catch (e){
+      await __ensureGapi();                 // ✅ make sure Sheets client exists
+      await listSheetData({ forceNetwork: true });
+    } catch (e) {
       console.error("[refreshData] failed", e);
-      updateDataStatus("error", "Refresh failed");
+      showToast?.("Refresh failed (see console).");
     }
   }, { passive: true });
-})();
+}
+
 
 const AUTO_PRELOAD_ALL = true;
 const MAX_BACKGROUND_PAGES = Infinity;         
@@ -3313,8 +3307,17 @@ async function fetchRowsWindow(spreadsheetId, gidNumber, pageIdx, pageSize) {
 
   return { header, dataRows, title };
 }
+async function sheetsValuesGet(params){
+  await __ensureGapi(); // make sure client is ready
+  if (!__gapiReady()) throw new Error("Google client not ready");
+  return await withBackoff429(() => gapi.client.sheets.spreadsheets.values.get(params));
+}
 
-function transformWindowRows(header, dataRows) {
+async function sheetsSpreadsheetsGet(params){
+  await __ensureGapi(); // make sure client is ready
+  if (!__gapiReady()) throw new Error("Google client not ready");
+  return await withBackoff429(() => gapi.client.sheets.spreadsheets.get(params));
+}function transformWindowRows(header, dataRows) {
   dbg("[transformWindowRows] header length:", (header||[]).length, "dataRows:", (dataRows||[]).length);
 
   const colMap = {};

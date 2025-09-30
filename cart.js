@@ -1,3 +1,26 @@
+// ---- Airtable options cache (per base) ----
+const AT_OPTS_TTL_MS = 60 * 60 * 1000; // 1 hour (tune as needed)
+function atOptsKey(baseId){ return `at_opts_${baseId || "unknown"}`; }
+
+function loadAtOpts(baseId){
+  try {
+    const raw = sessionStorage.getItem(atOptsKey(baseId));
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || !obj.savedAt) return null;
+    if (Date.now() - obj.savedAt > AT_OPTS_TTL_MS) return null;
+    return obj.data;
+  } catch { return null; }
+}
+
+function saveAtOpts(baseId, data){
+  try {
+    sessionStorage.setItem(
+      atOptsKey(baseId),
+      JSON.stringify({ savedAt: Date.now(), data })
+    );
+  } catch {}
+}
 
 (function () {
   "use strict";
@@ -80,26 +103,46 @@ function currentBranchLabel() {
   return id ? (maps.branch.idToLabel.get(id) || "") : "";
 }
 
-async function refreshSubcontractorsForBranch(service) {
-  if (!els.subcontractorCompany) return;
-  const label = currentBranchLabel();
-  if (!label) {
-    populateSelectWithPairs(els.subcontractorCompany, []); // just placeholder
+
+
+function atBaseId() {
+  return (window.APP && window.APP.airtable && window.APP.airtable.BASE_ID) || "";
+}
+
+// FULL: initDropdowns (cache-first)
+async function initDropdowns(service) {
+  if (!service) service = new AirtableService();
+  const baseId = atBaseId();
+
+  // show busy state
+  ["branch","fieldMgr","neededBy","reason","subcontractorCompany"].forEach(k => els[k]?.setAttribute("aria-busy","true"));
+
+  // 1) CACHE PATH — no network
+  const cached = (window.ATOPTS && typeof ATOPTS.load === "function") ? ATOPTS.load(baseId) : null;
+  if (cached) {
+    // Field Manager / Branch
+    if (Array.isArray(cached.fmOptions)) populateSelectWithPairs(els.fieldMgr, cached.fmOptions);
+    if (Array.isArray(cached.brOptions)) populateSelectWithPairs(els.branch,   cached.brOptions);
+
+    // Needed By / Reason (Fill-In)
+    if (els.neededBy && Array.isArray(cached.neededBy)) populateSelectStrings(els.neededBy, cached.neededBy);
+    if (els.reason   && Array.isArray(cached.reason))   populateSelectStrings(els.reason,   cached.reason);
+
+    // restore id/label maps if you use them
+    if (cached.fmPairsIdToLabel)  maps.fieldMgr.idToLabel = new Map(cached.fmPairsIdToLabel);
+    if (cached.fmPairsLabelToId)  maps.fieldMgr.labelToId = new Map(cached.fmPairsLabelToId);
+    if (cached.brPairsIdToLabel)  maps.branch.idToLabel   = new Map(cached.brPairsIdToLabel);
+    if (cached.brPairsLabelToId)  maps.branch.labelToId   = new Map(cached.brPairsLabelToId);
+
+    // subcontractors for current branch — cache per branch
+    await refreshSubcontractorsForBranch(service); // uses per-branch cache; see below
+
+    // done: release busy and EXIT (no fetch)
+    ["branch","fieldMgr","neededBy","reason","subcontractorCompany"].forEach(k => els[k]?.removeAttribute("aria-busy"));
     return;
   }
-  try {
-    const opts = await service.fetchSubcontractorOptionsFilteredByBranch(label);
-    populateSelectWithPairs(
-      els.subcontractorCompany,
-      (opts||[]).map(o => ({ value: o.id, label: o.label }))
-    );
-  } catch (e) {
-    populateSelectWithPairs(els.subcontractorCompany, []);
-  }
-}
-async function initDropdowns(service) {
-  setStatus("", "info");
-  ["branch","fieldMgr","neededBy","reason"].forEach(k => els[k]?.setAttribute("aria-busy","true"));
+
+  // 2) FIRST-TIME PATH — one fetch to seed cache
   try {
     const [{ options: fmOptions, idToLabel: fmIdToLabel, labelToId: fmLabelToId },
            { options: brOptions, idToLabel: brIdToLabel, labelToId: brLabelToId }] = await Promise.all([
@@ -110,34 +153,69 @@ async function initDropdowns(service) {
     maps.fieldMgr.idToLabel = fmIdToLabel; maps.fieldMgr.labelToId = fmLabelToId;
     maps.branch.idToLabel   = brIdToLabel; maps.branch.labelToId   = brLabelToId;
 
-    populateSelectWithPairs(els.fieldMgr, fmOptions.map(o => ({ value: o.id, label: o.label })));
     const { filtered: brFiltered } = filterToUSCities(brOptions);
-    populateSelectWithPairs(els.branch, brFiltered.map(o => ({ value: o.id, label: o.label })));
 
-    const { neededBy, reason } = await service.fetchDropdowns({
-      branchField: "___ignore_branch___",
-      fieldMgrField: "___ignore_fm___",
-      neededByField: "Needed By",
-      reasonField: "Reason For Fill In",
+    populateSelectWithPairs(els.fieldMgr, fmOptions.map(o => ({ value: o.id, label: o.label })));
+    populateSelectWithPairs(els.branch,   brFiltered.map(o => ({ value: o.id, label: o.label })));
+
+    // Fill-In specific string dropdowns if present
+    let neededBy = null, reason = null;
+    if (els.neededBy || els.reason) {
+      const d = await service.fetchDropdowns({
+        branchField: "___ignore_branch___",
+        fieldMgrField: "___ignore_fm___",
+        neededByField: "Needed By",
+        reasonField:  "Reason For Fill In",
+      });
+      neededBy = d.neededBy; reason = d.reason;
+      if (els.neededBy) populateSelectStrings(els.neededBy, neededBy);
+      if (els.reason)   populateSelectStrings(els.reason, reason);
+    }
+
+    // seed cache for this base
+    ATOPTS?.save?.(baseId, {
+      fmOptions: fmOptions.map(o => ({ value: o.id, label: o.label })),
+      brOptions: brFiltered.map(o => ({ value: o.id, label: o.label })),
+      neededBy, reason,
+      fmPairsIdToLabel: Array.from(fmIdToLabel.entries()),
+      fmPairsLabelToId: Array.from(fmLabelToId.entries()),
+      brPairsIdToLabel: Array.from(brIdToLabel.entries()),
+      brPairsLabelToId: Array.from(brLabelToId.entries()),
+      subcontractorsByBranch: {} // filled lazily
     });
-    populateSelectStrings(els.neededBy, neededBy);
-    populateSelectStrings(els.reason, reason);
 
-    // NEW: first load subcontractors (if a branch is preselected)
     await refreshSubcontractorsForBranch(service);
-
-    // NEW: when Branch changes, re-filter subcontractors
-    els.branch?.addEventListener("change", () => {
-      refreshSubcontractorsForBranch(service);
-    });
-
-    setStatus("", "");
   } catch (err) {
-    logger.error?.("dropdowns", err);
+    console.error("[initDropdowns] failed", err);
   } finally {
-    ["branch","fieldMgr","neededBy","reason"].forEach(k => els[k]?.removeAttribute("aria-busy"));
+    ["branch","fieldMgr","neededBy","reason","subcontractorCompany"].forEach(k => els[k]?.removeAttribute("aria-busy"));
   }
 }
+
+// FULL: refreshSubcontractorsForBranch (per-branch cache; no fetch if cached)
+async function refreshSubcontractorsForBranch(service) {
+  if (!els.subcontractorCompany) return;
+  const baseId = atBaseId();
+  const label  = currentBranchLabel();
+  if (!label) { populateSelectWithPairs(els.subcontractorCompany, []); return; }
+
+  const cached = ATOPTS?.getBranchSubs?.(baseId, label);
+  if (cached) { populateSelectWithPairs(els.subcontractorCompany, cached); return; }
+
+  // Only fetch if missing for this base+branch
+  try {
+    const opts  = await service.fetchSubcontractorOptionsFilteredByBranch(label);
+    const pairs = (opts || []).map(o => ({ value: o.id, label: o.label }));
+    populateSelectWithPairs(els.subcontractorCompany, pairs);
+    ATOPTS?.saveBranchSubs?.(baseId, label, pairs);
+  } catch (e) {
+    console.warn("[subcontractors] fetch failed", e);
+    populateSelectWithPairs(els.subcontractorCompany, []);
+  }
+}
+
+
+
 
 function setSaved(nextState) {
   try {
@@ -354,40 +432,6 @@ function setSaved(nextState) {
     return { filtered, rejected };
   }
 
-  async function initDropdowns(service) {
-    
-    setStatus("", "info");
-    ["branch","fieldMgr","neededBy","reason"].forEach(k => els[k]?.setAttribute("aria-busy","true"));
-    try {
-      const [{ options: fmOptions, idToLabel: fmIdToLabel, labelToId: fmLabelToId },
-             { options: brOptions, idToLabel: brIdToLabel, labelToId: brLabelToId }] = await Promise.all([
-        service.fetchFieldManagerOptions(),
-        service.fetchBranchOptions(),
-      ]);
-
-      maps.fieldMgr.idToLabel = fmIdToLabel; maps.fieldMgr.labelToId = fmLabelToId;
-      maps.branch.idToLabel   = brIdToLabel; maps.branch.labelToId   = brLabelToId;
-
-      populateSelectWithPairs(els.fieldMgr, fmOptions.map(o => ({ value: o.id, label: o.label })));
-      const { filtered: brFiltered } = filterToUSCities(brOptions);
-      populateSelectWithPairs(els.branch, brFiltered.map(o => ({ value: o.id, label: o.label })));
-
-      const { neededBy, reason } = await service.fetchDropdowns({
-        branchField: "___ignore_branch___",
-        fieldMgrField: "___ignore_fm___",
-        neededByField: "Needed By",
-        reasonField: "Reason For Fill In",
-      });
-      populateSelectStrings(els.neededBy, neededBy);
-      populateSelectStrings(els.reason, reason);
-
-      setStatus("", "");
-    } catch (err) {
-      logger.error?.("dropdowns", err);
-    } finally {
-      ["branch","fieldMgr","neededBy","reason"].forEach(k => els[k]?.removeAttribute("aria-busy"));
-    }
-  }
 
   function ensureOption(selectEl, value, label) {
     if (!selectEl || !value) return;

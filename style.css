@@ -1142,3 +1142,43 @@ header.cart-header {
   margin: 0.5rem 0 1rem;
   font-weight: 700;
 }
+/* Mode Toggle Styles */
+.mode-toggle {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 0;
+  border: 1px solid var(--border, #d0d5dd);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--card, #fff);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+}
+
+.mode-toggle .mode-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 8px 14px;
+  font: inherit;
+  cursor: pointer;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: background .15s ease, color .15s ease;
+}
+
+.mode-toggle .mode-btn:hover {
+  background: rgba(16,24,40,.04);
+}
+
+.mode-toggle .mode-btn.is-active,
+.mode-toggle .mode-btn[aria-pressed="true"] {
+  background: var(--brand-soft, #eef2ff);
+  color: var(--brand-ink, #3949ab);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mode-toggle .mode-btn { transition: none; }
+}
+/* add to your css */
+.cart-fab .badge { display:inline-block; min-width:1.25rem; text-align:center; }

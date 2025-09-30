@@ -4,9 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Product Portal — Select Items, Add Labor</title>
-  <link rel="stylesheet" href="style.css" />
-    <link rel="stylesheet" href="loading.css" />
+  <link rel="stylesheet" href="style.css"/>
+    <link rel="stylesheet" href="loading.css"/>
+    <script src="at-options-cache.js"></script>
+
 <script src="app-config.js"></script>
+<script src="skip-network-on-mode-switch.js"></script>
 
   <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 </head>
@@ -30,11 +33,12 @@
       <option value="">All categories</option>
     </select>
     <button id="clearFilters" class="btn" disabled>Clear</button>
-  <select id="appModeSelect" style="margin:8px 0;">
-  <option value="vpo">VPO</option>
-  <option value="fillin">Fill-In</option>
-</select>
+ <!-- Mode Toggle: place near the top of index.html where the dropdown used to be -->
+<div class="mode-toggle" role="group" aria-label="App mode">
+  <button type="button" class="mode-btn" data-mode="vpo"    id="modeVpo"    aria-pressed="false">VPO</button>
+  <button type="button" class="mode-btn" data-mode="fillin" id="modeFillin" aria-pressed="false">Fill-In</button>
 </div>
+
 <!-- Hidden-until-filter hint -->
 <p id="bg-hint" style="display:block;margin:10px 0;color:#555;font-style:italic;">
 </p>
@@ -124,9 +128,28 @@
 
 <script src="app-ui-gates.js"></script>
 
+<script>
+  // Only boot Google if we are NOT skipping (e.g., not a mode-toggle reload with cache)
+  function __bootGoogleIfNeeded() {
+    try {
+      if (window.__SKIP_BOOTSTRAP) {
+        console.debug("[gapi] skip boot (mode switch)");
+        return;
+      }
+      if (typeof gapiLoaded === "function") {
+        gapiLoaded(); // your existing function in database.js
+      }
+    } catch (e) {
+      console.warn("[gapi] boot guard failed", e);
+    }
+  }
+</script>
 
-<script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
-<script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
+<!-- Google JS (note: onload just signals; our guard decides to boot or skip) -->
+<script src="https://apis.google.com/js/api.js" async defer onload="__bootGoogleIfNeeded()"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+
 
 <script>
   (function () {
@@ -184,7 +207,352 @@
       location.href = "cart.html?app=" + encodeURIComponent(m);
     });
   })();
+(function(){
+  "use strict";
+
+  function reflect(mode){
+    var vpo    = document.getElementById("modeVpo");
+    var fillin = document.getElementById("modeFillin");
+    var isV = mode === "vpo";
+    vpo?.setAttribute("aria-pressed", String(isV));
+    fillin?.setAttribute("aria-pressed", String(!isV));
+    vpo?.classList.toggle("is-active", isV);
+    fillin?.classList.toggle("is-active", !isV);
+    try { document.documentElement.setAttribute("data-app", mode); } catch {}
+  }
+
+  async function switchModeLive(next){
+    if (next !== "vpo" && next !== "fillin") return;
+
+    // 1) persist + expose globals
+    try { localStorage.setItem("vanir_app_mode", next); } catch {}
+    window.APP_MODE = next;
+    if (window.APPS && window.APPS[next]) window.APP = window.APPS[next];
+
+    // 2) update Airtable runtime config
+    try { setAirtableRuntimeConfig?.(window.APP.airtable); } catch {}
+
+    // 3) re-gate UI (pure DOM; no network)
+    try { gateAppBlocks?.(); gateLabor?.(); applyTitles?.(); } catch {}
+
+    // 4) hydrate dropdowns from cache (no network if cached)
+    try {
+      const svc = new AirtableService();
+      await initDropdowns(svc);     // see section 2; returns early on cache
+    } catch (e) { console.warn("initDropdowns failed:", e); }
+
+    reflect(next);
+  }
+
+  document.getElementById("modeVpo")   ?.addEventListener("click", () => switchModeLive("vpo"),    {passive:true});
+  document.getElementById("modeFillin")?.addEventListener("click", () => switchModeLive("fillin"), {passive:true});
+
+  // initial visual state
+  reflect((window.APP_MODE || localStorage.getItem("vanir_app_mode") || "vpo").toLowerCase());
+})();
+ (function(){
+  "use strict";
+
+  // Ensure we have a current mode
+  var CURRENT = (window.APP_MODE || "vpo");
+
+  // Grab buttons
+  var btnVpo    = document.getElementById("modeVpo");
+  var btnFillin = document.getElementById("modeFillin");
+
+  if (!btnVpo || !btnFillin) return;
+
+})(); 
+
+
+(function(){
+  "use strict";
+
+  var btn = document.getElementById("cartFab");
+  var badge = document.getElementById("cartCountBadge");
+  if (!btn) return;
+
+  // Resolve current mode from globals or saved preference
+  function getMode(){
+    try {
+      var m = (window.APP_MODE || localStorage.getItem("vanir_app_mode") || "vpo").toLowerCase();
+      return (m === "fillin") ? "fillin" : "vpo";
+    } catch { return "vpo"; }
+  }
+
+  // Navigate to cart with ?app=mode, and mark this as a mode-aware nav
+  function openCart(){
+    var mode = getMode();
+    try {
+      // lets your Google-cache wrapper know this nav is a mode transition
+      sessionStorage.setItem("vanir_mode_switch", JSON.stringify({ at: Date.now(), to: mode }));
+    } catch {}
+
+    var url = new URL("cart.html", location.href);
+    url.searchParams.set("app", mode);
+    location.href = url.toString();
+  }
+
+  // Click & keyboard activate
+  btn.addEventListener("click", function(e){ e.preventDefault(); openCart(); });
+  btn.addEventListener("keydown", function(e){
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCart(); }
+  });
+
+  // Badge: sum of quantities in localStorage cart
+  function updateCartFabBadge(){
+    try {
+      var key = (typeof window.STORAGE_KEY === "string" && window.STORAGE_KEY) || "vanir_cart_v1";
+      var saved = JSON.parse(localStorage.getItem(key) || "{}");
+
+      // support both shapes: { items:[{qty}] } or { products:[{qty}] }
+      var rows = Array.isArray(saved.items) ? saved.items
+               : Array.isArray(saved.products) ? saved.products
+               : [];
+
+      var count = 0;
+      for (var i = 0; i < rows.length; i++) {
+        var q = Number(rows[i]?.qty ?? rows[i]?.quantity ?? 0);
+        if (!Number.isNaN(q)) count += q;
+      }
+
+      if (badge) {
+        badge.textContent = String(count);
+        badge.style.display = count > 0 ? "" : "none";
+      }
+    } catch (e) {
+      // hide badge on error
+      if (badge) badge.style.display = "none";
+    }
+  }
+
+  // expose for other code to call after cart changes
+  window.updateCartFabBadge = updateCartFabBadge;
+
+  // initial paint
+  updateCartFabBadge();
+})();
+(function(){
+  const origHref = Object.getOwnPropertyDescriptor(Location.prototype, 'href').set;
+  Object.defineProperty(Location.prototype, 'href', {
+    set(v){ console.trace("[BLOCKED] location.href set to:", v); /* comment next line to fully block */ return origHref.call(this, v); }
+  });
+  const _reload = location.reload;
+  location.reload = function(){ console.trace("[BLOCKED] location.reload called"); /* comment next line to fully block */ return _reload.apply(this, arguments); }
+})();
+
+(function(){
+  "use strict";
+
+  // helpers
+  function reflect(mode){
+    var isVpo = mode === "vpo";
+    document.getElementById("modeVpo")?.setAttribute("aria-pressed", String(isVpo));
+    document.getElementById("modeFillin")?.setAttribute("aria-pressed", String(!isVpo));
+    document.getElementById("modeVpo")?.classList.toggle("is-active", isVpo);
+    document.getElementById("modeFillin")?.classList.toggle("is-active", !isVpo);
+  }
+  function getMode(){ return (window.APP_MODE || localStorage.getItem("vanir_app_mode") || "vpo").toLowerCase(); }
+
+  async function switchModeLive(nextMode){
+    if (nextMode !== "vpo" && nextMode !== "fillin") return;
+
+    // 1) persist + globals
+    try { localStorage.setItem("vanir_app_mode", nextMode); } catch {}
+    window.APP_MODE = nextMode;
+    if (window.APPS && window.APPS[nextMode]) window.APP = window.APPS[nextMode];
+    try { document.documentElement.setAttribute("data-app", nextMode); } catch {}
+
+    // 2) re-gate UI (no network)
+    try { 
+      // these are already in your app (from app-ui-gates.js / inline)
+      if (typeof applyTitles === "function") applyTitles();
+      if (typeof gateAppBlocks === "function") gateAppBlocks();
+      if (typeof gateLabor === "function") gateLabor();
+    } catch {}
+
+    // 3) reconfigure Airtable client (so saves go to the right base)
+    try { if (typeof setAirtableRuntimeConfig === "function") setAirtableRuntimeConfig(window.APP.airtable); } catch {}
+
+    // 4) rehydrate dropdowns from cache (ATOPTS) or fetch only if missing
+    try {
+      const svc = new AirtableService();
+      if (typeof initDropdowns === "function") {
+        await initDropdowns(svc);   // uses session cache; won’t refetch if cached
+      }
+    } catch (e) {
+      console.warn("rehydrate failed:", e);
+    }
+
+    // 5) update the control visual state
+    reflect(nextMode);
+  }
+
+  // wire the buttons
+  document.getElementById("modeVpo")?.addEventListener("click", () => switchModeLive("vpo"),    {passive:true});
+  document.getElementById("modeFillin")?.addEventListener("click", () => switchModeLive("fillin"), {passive:true});
+
+  // initial paint
+  reflect(getMode());
+})();
 </script>
+<script>
+(function(){
+  "use strict";
+
+  // -----------------------------------------
+  // 0) KILL ANY LEGACY "RELOAD ON MODE" PATHS
+  // -----------------------------------------
+  // A. Neutralize old helpers that do location.href reloads
+  ["__setAppMode", "setModeAndReload", "legacySetMode"].forEach(fn => {
+    if (typeof window[fn] === "function") {
+      const original = window[fn];
+      window[fn] = function(){ console.debug(`[mode] blocked call to ${fn}`); /* no-op */ };
+      console.debug(`[mode] ${fn} neutralized (was reloading page)`, original);
+    }
+  });
+
+  // B. Remove the old <select id="appModeSelect"> if it exists (and any attached onChange)
+  (function(){
+    const sel = document.getElementById("appModeSelect");
+    if (!sel) return;
+    const ghost = document.createComment("removed legacy appModeSelect (prevented reload)");
+    sel.replaceWith(ghost);
+    console.debug("[mode] removed legacy #appModeSelect");
+  })();
+
+  // C. Optional: log any navigation attempts so you can spot who tries to reload
+  (function installNavTracer(){
+    const origSetHref = Object.getOwnPropertyDescriptor(Location.prototype, "href")?.set;
+    if (origSetHref) {
+      Object.defineProperty(Location.prototype, "href", {
+        set(v){
+          console.trace("[NAV]", "location.href =", v);
+          // Comment-out the next line to *block* navigation during debugging:
+          return origSetHref.call(this, v);
+        }
+      });
+    }
+    const _reload = location.reload;
+    location.reload = function(){
+      console.trace("[NAV]", "location.reload()");
+      // Comment-out the next line to *block* reload during debugging:
+      return _reload.apply(this, arguments);
+    };
+  })();
+
+
+  // -----------------------------------------
+  // 1) LIVE SWITCH (NO RELOAD, NO GOOGLE TOUCH)
+  // -----------------------------------------
+  function reflect(mode){
+    const isV = (mode === "vpo");
+    const btnV = document.getElementById("modeVpo");
+    const btnF = document.getElementById("modeFillin");
+    btnV?.setAttribute("aria-pressed", String(isV));
+    btnF?.setAttribute("aria-pressed", String(!isV));
+    btnV?.classList.toggle("is-active", isV);
+    btnF?.classList.toggle("is-active", !isV);
+    try { document.documentElement.setAttribute("data-app", mode); } catch {}
+  }
+
+  function currentMode(){
+    try {
+      const m = (window.APP_MODE || localStorage.getItem("vanir_app_mode") || "vpo").toLowerCase();
+      return (m === "fillin") ? "fillin" : "vpo";
+    } catch { return "vpo"; }
+  }
+
+  async function switchModeLive(next){
+    if (next !== "vpo" && next !== "fillin") return;
+
+    // 1) Persist + expose globals (no navigation)
+    try { localStorage.setItem("vanir_app_mode", next); } catch {}
+    window.APP_MODE = next;
+    if (window.APPS && window.APPS[next]) window.APP = window.APPS[next];
+
+    // 2) Update the URL *without reloading* (optional: keeps ?app= in address bar)
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set("app", next);
+      history.replaceState(null, "", url);
+    } catch {}
+
+    // 3) Reconfigure Airtable to the new base/table IN MEMORY
+    try { setAirtableRuntimeConfig?.(window.APP.airtable); } catch {}
+
+    // 4) Re-gate UI (pure DOM changes; no network)
+    try { gateAppBlocks?.(); gateLabor?.(); applyTitles?.(); } catch {}
+
+    // 5) Rehydrate dropdowns from cache (no network if base was cached)
+    try {
+      const svc = new AirtableService();
+      await initDropdowns?.(svc);  // your cache-first version; returns early if cached
+    } catch (e) { console.warn("[mode] initDropdowns failed", e); }
+
+    // 6) Keep cart link(s) in sync (no navigation)
+    (function syncCartLinks(){
+      const mode = next;
+      document.querySelectorAll('a[href$="cart.html"], a[data-cart-link]').forEach(a => {
+        try {
+          const u = new URL(a.getAttribute("href"), location.href);
+          u.searchParams.set("app", mode);
+          a.setAttribute("href", u.toString());
+        } catch {}
+      });
+    })();
+
+    // 7) Visual state
+    reflect(next);
+  }
+
+  // -----------------------------------------
+  // 2) WIRE THE TWO BUTTONS
+  // -----------------------------------------
+  document.getElementById("modeVpo")   ?.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); switchModeLive("vpo"); },    {passive:true});
+  document.getElementById("modeFillin")?.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); switchModeLive("fillin"); }, {passive:true});
+
+  // Initial paint
+  reflect(currentMode());
+})();
+</script>
+
+<script>
+(function(){
+  "use strict";
+
+  // label per mode
+  const TITLES = { vpo: "VPO", fillin: "Fill-In" };
+
+  // set all .page-title elements and the <title> tag
+  function setPageTitleForMode(mode){
+    const m = (mode || "").toLowerCase();
+    const label = TITLES[m] || TITLES.vpo;
+
+    // update any H1s (or other elements) that use .page-title
+    document.querySelectorAll(".page-title").forEach(el => { el.textContent = label; });
+
+    // optionally update browser tab title too
+    try { document.title = label; } catch {}
+  }
+
+  // expose so your switchModeLive can call it
+  window.setPageTitleForMode = setPageTitleForMode;
+
+  // initial paint based on current mode
+  setPageTitleForMode((window.APP_MODE || localStorage.getItem("vanir_app_mode") || "vpo").toLowerCase());
+
+  // fallback: if you already flip <html data-app="..."> elsewhere, keep H1 in sync
+  new MutationObserver(() => {
+    const mode = (document.documentElement.getAttribute("data-app") || "vpo").toLowerCase();
+    setPageTitleForMode(mode);
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-app"] });
+
+  // if you control switchModeLive, also call this inside it:
+  // setPageTitleForMode(nextMode);
+})();
+</script>
+
 
 </body>
 </html>
