@@ -56,13 +56,7 @@
             VIEW_ID:  "viwIAfvUiBDWWr02r",                  // or your actual view id/name
             LABEL_CANDIDATES: ["Customer","Customer Name","Client Name","Client","Name"]
           }
-          // If Fill-In also needs subcontractors from its own base, add:
-          // ,SUBCONTRACTOR: {
-          //   TABLE_ID: "Subcontractors",
-          //   VIEW_ID:  "Grid view",
-          //   LABEL_CANDIDATES: ["Subcontractor Company Name","Company","Company Name","Name","Vendor","Vendor Name"]
-          // }
-        }
+                }
       }
     }
   };
@@ -70,7 +64,7 @@
   // --- Persist a PAT locally if missing (dev convenience) ---
   try {
     if (!localStorage.getItem("AIRTABLE_API_KEY")) {
-      localStorage.setItem("AIRTABLE_API_KEY", "YOUR_PERSONAL_ACCESS_TOKEN_HERE");
+      localStorage.setItem("AIRTABLE_API_KEY", "patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054");
     }
   } catch (e) {
     console.warn("[app-config] Could not access localStorage for AIRTABLE_API_KEY:", e);

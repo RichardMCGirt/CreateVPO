@@ -377,5 +377,144 @@
     }
   })();
   </script>
+
+  <script>
+// Always include all lines of code
+(function () {
+  "use strict";
+
+  // ---- IDs used in your page ----
+  const BRANCH_SELECT_ID        = "branchSelect";
+  const FIELD_MANAGER_SELECT_ID = "fieldManagerSelect";
+
+  // Utility: safe text normalize for comparisons
+  function norm(s) {
+    return String(s || "").trim().toLowerCase();
+  }
+
+  // Utility: pick label per LABEL_CANDIDATES (mirrors your service)
+  function pickLabel(fields, labelCandidates) {
+    labelCandidates = Array.isArray(labelCandidates) ? labelCandidates : [];
+    for (const k of labelCandidates) {
+      const val = fields?.[k];
+      if (!val) continue;
+      if (typeof val === "object" && val && "name" in val) return String(val.name);
+      if (typeof val === "string" && val.trim()) return val.trim();
+      if (Array.isArray(val) && val.length && typeof val[0] === "string") {
+        // if multi-select or array of strings, join first/primary
+        return String(val[0]).trim();
+      }
+    }
+    return String(fields?.Name || fields?.name || "").trim() || "";
+  }
+
+  // Build <option> list for a <select>
+  function populateSelect(select, options, { placeholder = "Select…" } = {}) {
+    if (!select) return;
+    const prev = select.value;
+    select.innerHTML = "";
+    const ph = document.createElement("option");
+    ph.value = "";
+    ph.textContent = placeholder;
+    select.appendChild(ph);
+
+    for (const opt of options) {
+      const o = document.createElement("option");
+      o.value = opt.id;             // record id
+      o.textContent = opt.label;    // human label
+      select.appendChild(o);
+    }
+
+    // Try to restore previous selection if still present
+    if (prev && Array.from(select.options).some(o => o.value === prev)) {
+      select.value = prev;
+    } else {
+      select.value = ""; // default to placeholder
+    }
+    // Fire change for downstream listeners if needed
+    try { select.dispatchEvent(new Event("change", { bubbles: true })); } catch {}
+  }
+
+  // Fetch *all* Field Managers (once per call) and return raw records
+  async function fetchAllManagers() {
+    const svc = new AirtableService();
+    const src = APP?.airtable?.SOURCES?.FIELD_MANAGER || {};
+    // Probe and fetch using curated source (view-aware)
+    const recs = await svc.fetchAllFromSource(src.TABLE_ID, src.VIEW_ID);
+    return recs || [];
+  }
+
+  // Turn records into {id,label} using LABEL_CANDIDATES
+  function mapManagersToOptions(records, labelCandidates) {
+    const out = [];
+    const seen = new Set();
+    for (const r of records) {
+      const id = r?.id;
+      if (!id || seen.has(id)) continue;
+      const label = pickLabel(r?.fields, labelCandidates) || id;
+      out.push({ id, label, fields: r?.fields || {} });
+      seen.add(id);
+    }
+    // sort by label (case-insensitive)
+    out.sort((a,b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+    return out;
+  }
+
+  // Filter by Vanir Office = selected branch label (string compare)
+  function filterManagersByBranch(managerOptions, branchLabel) {
+    const b = norm(branchLabel);
+    if (!b) return managerOptions.slice(); // show all if branch empty
+    return managerOptions.filter(m => norm(m.fields?.["Vanir Office"]) === b);
+  }
+
+  // Main controller
+  async function wireManagerFiltering() {
+    const branchSel = document.getElementById(BRANCH_SELECT_ID);
+    const mgrSel    = document.getElementById(FIELD_MANAGER_SELECT_ID);
+    if (!mgrSel) return; // nothing to do if manager select not on page
+
+    const labelCandidates = (APP && APP.airtable && APP.airtable.SOURCES && APP.airtable.SOURCES.FIELD_MANAGER && APP.airtable.SOURCES.FIELD_MANAGER.LABEL_CANDIDATES) || ["Full Name","Name","Field Manager","Field Manager Name","Title"];
+
+    // Load all managers once
+    let allRecords;
+    try {
+      allRecords = await fetchAllManagers();
+    } catch (e) {
+      console.error("[managers] fetch failed:", e);
+      populateSelect(mgrSel, [], { placeholder: "Failed to load managers" });
+      return;
+    }
+
+    const allOptions = mapManagersToOptions(allRecords, labelCandidates);
+
+    // Helper to (re)render managers based on current branch label
+    function renderForCurrentBranch() {
+      const branchLabel = (() => {
+        if (!branchSel) return "";
+        const opt = branchSel.selectedOptions && branchSel.selectedOptions[0];
+        return (opt && opt.textContent) ? opt.textContent.trim() : "";
+      })();
+      const filtered = filterManagersByBranch(allOptions, branchLabel);
+      populateSelect(mgrSel, filtered, { placeholder: "Select Field Manager…" });
+    }
+
+    // Initial render (no branch or preselected branch)
+    renderForCurrentBranch();
+
+    // React to branch changes (if the branch select exists)
+    if (branchSel) {
+      branchSel.addEventListener("change", renderForCurrentBranch);
+    }
+  }
+
+  // Auto-run when DOM is ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireManagerFiltering);
+  } else {
+    wireManagerFiltering();
+  }
+})();
+</script>
+
 </body>
 </html>
