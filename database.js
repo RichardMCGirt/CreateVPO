@@ -617,77 +617,99 @@ function __virtRowHTML(r, idx, topPx) {
       <div class="cell-price">${escapeHtml(formatMoney(unitBase(r)))}</div>
       <div class="vactions">
         <input aria-label="Quantity" type="number" class="qty-input" min="1" step="1" value="1"
-               data-idx="${idx}" style="width:70px;padding:4px 6px;">
+               id="qty_${idx}" data-idx="${idx}" style="width:70px;padding:4px 6px;">
         <button class="btn add-to-cart" data-key="${escapeHtml(key)}" data-idx="${idx}">Add</button>
       </div>
     </div>
   `;
 }
 
-function addToCartFromRow(row, key, qty) {
-  try {
-    const k = key || `${row.sku}|${row.vendor}|${row.uom || ""}`;
-    const existing = CART.get(k);
 
-    const unitBaseVal = unitBase(row);
-    const addQty = Math.max(1, Math.floor(Number(qty) || 1));
+function addToCartFromRow(row, key, rawQty, opts = {}) {
+  // opts.mode: "set" (default) or "add"
+  const mode    = (opts && opts.mode) || "set";
+  const addQty  = Math.max(0, Math.floor(Number(rawQty) || 0));
+  if (!(addQty > 0)) return;
 
-    const item = existing || {
-      key: k,
-      row: row,
-      qty: 0,
-      unitBase: unitBaseVal,
-      marginPct: DEFAULT_PRODUCT_MARGIN_PCT,
-    };
+  const existing = CART.get(key);
+  const ub       = Number(row?.priceExtended ?? row?.price ?? row?.base ?? 0) || 0;
 
-    item.qty = Math.max(1, (Number(item.qty) || 0) + addQty);
-    item.unitBase = unitBaseVal;   // keep fresh
-    item.row = row;                // ensure full row is present
+  if (existing) {
+    // ✅ replace instead of accumulate
+    existing.qty      = addQty;
+    existing.unitBase = (existing.unitBase ?? ub);
+    existing.marginPct = Math.max(0, Number(existing.marginPct) || 0);
+  } else {
+    CART.set(key, {
+      row,
+      qty: addQty,
+      unitBase: ub,
+      marginPct: DEFAULT_PRODUCT_MARGIN_PCT
+    });
+  }
 
-    CART.set(k, item);
+  // ensure one labor line exists if your UI expects it
+  if (LABOR_LINES.length === 0) addLaborLine(0, 0, "Labor line", 0);
 
-    if (LABOR_LINES.length === 0) addLaborLine(0, 0, "Labor line", 0);
+  renderCart();
+  persistState();          // save first
+  broadcastCartState();    // then broadcast
 
-    renderCart();
-    persistState();         // save first
-    broadcastCartState();   // then broadcast so cart.html updates instantly
-    showToast?.(`Added ${addQty} × ${row.sku} (${row.vendor})`);
-    showEl?.("cart-section", true);
-    updateCartBadge?.();
-  } catch (e) {
-    console.error("[addToCartFromRow] failed", e);
-    try { showToast?.("Could not add item (see console)."); } catch {}
+  // Friendlier toast that reflects "set" semantics
+  const verb = existing ? "Updated" : "Added";
+  showToast?.(`${verb} ${row?.sku || "item"} to qty ${addQty}`);
+  showEl?.("cart-section", true);
+
+  // Update badges in both environments
+  updateCartBadge?.();
+  if (typeof window.updateCartFabBadge === "function") {
+    try { window.updateCartFabBadge(); } catch {}
   }
 }
 
-
 function wireVirtualRowClicks() {
-  const vp = document.getElementById("table-viewport");
-  if (!vp || vp.__wiredAddClick) return;
-  vp.__wiredAddClick = true;
+  // Delegate from the always-present viewport container
+  const viewport = document.getElementById("table-viewport");
+  if (!viewport) return;
 
-  vp.addEventListener("click", (e) => {
-    const btn = e.target.closest && e.target.closest(".add-to-cart");
+  viewport.onclick = (ev) => {
+    const btn = ev.target.closest(".add-to-cart");
     if (!btn) return;
 
-    const rowIdx = Number(btn.getAttribute("data-idx")) || 0;
-    const key = btn.getAttribute("data-key") || "";
-    const row = (Array.isArray(window.FILTERED_ROWS) ? window.FILTERED_ROWS[rowIdx] : null);
-    if (!row) return;
+    const idx = Number(btn.getAttribute("data-idx"));
+    const key = btn.getAttribute("data-key");
+    const row = (Array.isArray(FILTERED_ROWS) ? FILTERED_ROWS[idx] : null) || ALL_ROWS[idx];
+    if (!row || !key) return;
 
-    const holder = btn.parentElement;
-    let qty = 1;
-    if (holder) {
-      const inp = holder.querySelector(".qty-input");
-      if (inp) {
-        const v = Number(inp.value);
-        qty = Number.isFinite(v) && v > 0 ? Math.floor(v) : 1;
-      }
+    // Prefer the sibling input. If not found, fall back to the id pattern.
+    const rowEl = btn.closest(".vrow");
+    let inp = rowEl ? rowEl.querySelector(".qty-input") : null;
+    if (!inp) {
+      const fallbackId = `qty_${idx}`;
+      inp = document.getElementById(fallbackId) || null;
+    }
+    const qty = Math.max(0, Math.floor(Number(inp?.value || 0)));
+
+    if (!(qty > 0)) {
+      showToast?.("Enter a quantity first.");
+      try { inp?.focus(); } catch {}
+      return;
     }
 
-    addToCartFromRow(row, key, qty);
-  }, { passive: true });
+    // Set (replace) the qty in cart
+    addToCartFromRow(row, key, qty, { mode: "set" });
+
+    // Mirror qty back into the inline input for confirmation
+    try { if (inp) inp.value = String(qty); } catch {}
+
+    // Update any floating cart badge
+    if (typeof window.updateCartFabBadge === "function") {
+      try { window.updateCartFabBadge(); } catch {}
+    }
+  };
 }
+
+
 function wireRowOpenHandler(){
   const vp = document.getElementById("table-viewport");
   if (!vp || vp.__wiredRowOpen) return;
@@ -1772,68 +1794,57 @@ function __parseQty(val){
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
-function wireDescriptionSheet(){
-  const vp = document.getElementById("table-viewport");
-  if (vp && !vp.__wiredDesc){
-    vp.__wiredDesc = true;
+function wireDescriptionSheet() {
+  document.getElementById("ds-close")?.addEventListener("click", hideDescSheet);
+  document.getElementById("desc-sheet")?.addEventListener("click", (ev) => {
+    if (ev.target?.id === "desc-sheet") hideDescSheet();
+  });
 
-    // Click / key on SKU cell opens the sheet
-    vp.addEventListener("click", (e) => {
-      const el = e.target.closest(".cell-sku");
-      if (!el) return;
-      const idx = Number(el.getAttribute("data-idx"));
-      const row = (window.FILTERED_ROWS && window.FILTERED_ROWS[idx]) || null;
-      if (row) showDescSheetForRow(row);
-    });
-    vp.addEventListener("keydown", (e) => {
-      const el = e.target.closest && e.target.closest(".cell-sku");
-      if (!el) return;
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        const idx = Number(el.getAttribute("data-idx"));
-        const row = (window.FILTERED_ROWS && window.FILTERED_ROWS[idx]) || null;
-        if (row) showDescSheetForRow(row);
-      }
-    });
-  }
-
-  // Sheet close actions
-  const sheet = document.getElementById("desc-sheet");
-  const closeBtn = document.getElementById("ds-close");
-  const backdrop = sheet?.querySelector(".ds-backdrop");
-  if (closeBtn && !closeBtn.__wired){
-    closeBtn.__wired = true;
-    closeBtn.addEventListener("click", hideDescSheet);
-  }
-  if (backdrop && !backdrop.__wired){
-    backdrop.__wired = true;
-    backdrop.addEventListener("click", hideDescSheet);
-  }
-  if (!document.__wiredEscClose){
-    document.__wiredEscClose = true;
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") hideDescSheet();
-    });
-  }
-
-  // Submit handler: add from sheet and close
   const form = document.getElementById("ds-form");
-  if (form && !form.__wired){
-    form.__wired = true;
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      try {
-        const qty = __parseQty(document.getElementById("ds-qty").value);
-        if (__dsLastRow && __dsLastKey) {
-          addToCartFromRow(__dsLastRow, __dsLastKey, qty);
-          hideDescSheet();
-        }
-      } catch (err) {
-        console.error("[desc-sheet] submit failed", err);
+  if (!form) return;
+
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+
+    const qtyInput = document.getElementById("ds-qty");
+    const qty      = Math.max(0, Math.floor(Number(qtyInput?.value || 0)));
+    if (!(qty > 0)) {
+      showToast?.("Enter a quantity first.");
+      try { qtyInput?.focus(); } catch {}
+      return;
+    }
+
+    if (!__dsLastRow || !__dsLastKey) {
+      showToast?.("No item selected.");
+      return;
+    }
+
+    // ✅ Replace (not add)
+    addToCartFromRow(__dsLastRow, __dsLastKey, qty, { mode: "set" });
+
+    // ✅ Mirror into the visible table row input if we can find it
+    try {
+      // locate the row by its data-key (same triple used to build keys)
+      const tr = document.querySelector(`#table-viewport [data-key="${CSS.escape(__dsLastKey)}"]`);
+      if (tr) {
+        // Get idx from the button on that row to compute the input id
+        const btn  = tr.querySelector('.add-to-cart');
+        const idx  = Number(btn?.getAttribute('data-idx'));
+        const inp  = document.getElementById(`qty_${idx}`);
+        if (inp) inp.value = String(qty);
       }
-    });
-  }
+    } catch {}
+
+    hideDescSheet();
+
+    // Keep badges in sync
+    updateCartBadge?.();
+    if (typeof window.updateCartFabBadge === "function") {
+      try { window.updateCartFabBadge(); } catch {}
+    }
+  });
 }
+
 
 
 

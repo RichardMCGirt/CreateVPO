@@ -205,7 +205,7 @@
       try {
         var app = window.APP || {};
         var title = (app.uiTitle || (app.key === "fillin" ? "Fill-In" : "VPO"));
-        document.title = "Your Cart — " + title;
+        document.title = "Cart — " + title;
         var formTitle = document.getElementById("formTitle");
         if (formTitle) formTitle.textContent = title + " Request Details";
       } catch(e){}
