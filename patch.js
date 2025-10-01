@@ -141,67 +141,156 @@
     return lines.join("\n");
   }
 
-  (async function initDropdowns(){
-    try {
-      const svc = new AirtableService();
+ (async function initDropdowns(){
+  try {
+    const svc = new AirtableService();
+    const APP_MODE = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
 
+    const customerSel = document.getElementById("customerSelect");
+    const branchSel   = document.getElementById("branchSelect");
+    const fmSel       = document.getElementById("fieldManagerSelect");
+
+    if (APP_MODE === "vpo") {
+      // --- VPO path: curated SOURCES ---
       const { options: customerOpts } = await svc.fetchCustomerOptions();
-      const customerSel = document.getElementById("customerSelect");
       if (customerSel) {
-        for (const opt of customerOpts) {
+        customerOpts.forEach(opt => {
           const o = document.createElement("option");
-          o.value = opt.id;          
-          o.textContent = opt.label; 
+          o.value = opt.id;
+          o.textContent = opt.label;
           customerSel.appendChild(o);
-        }
+        });
       }
 
-      const branchSel = document.getElementById("branchSelect");
+      const { options: branchOpts } = await svc.fetchBranchOptions();
       if (branchSel) {
-        for (const opt of branchOpts) {
+        branchOpts.forEach(opt => {
           const o = document.createElement("option");
-          o.value = opt.id; o.textContent = opt.label;
+          o.value = opt.id;
+          o.textContent = opt.label;
           branchSel.appendChild(o);
-        }
+        });
       }
 
       const { options: fmOpts } = await svc.fetchFieldManagerOptions();
-      const fmSel = document.getElementById("fieldManagerSelect");
       if (fmSel) {
-        for (const opt of fmOpts) {
+        fmOpts.forEach(opt => {
           const o = document.createElement("option");
-          o.value = opt.id; o.textContent = opt.label;
+          o.value = opt.id;
+          o.textContent = opt.label;
           fmSel.appendChild(o);
-        }
+        });
       }
-    } catch (e) {
-     
+    } else {
+      // --- Fill-In path: scan main table values ---
+      const dd = await svc.fetchDropdowns({
+        branchField: "Branch",              // adjust to real column name in Fill-In table
+        fieldMgrField: "Field Manager",     // adjust if needed
+        neededByField: "Needed By",
+        reasonField: "Reason For Fill In",
+      });
+
+      if (branchSel) {
+        dd.branch.forEach(lbl => {
+          const o = document.createElement("option");
+          o.value = lbl; o.textContent = lbl;
+          branchSel.appendChild(o);
+        });
+      }
+
+      if (fmSel) {
+        dd.fieldManager.forEach(lbl => {
+          const o = document.createElement("option");
+          o.value = lbl; o.textContent = lbl;
+          fmSel.appendChild(o);
+        });
+      }
+
+      if (customerSel) {
+        // optional: Fill-In may not have customers; if you do, pick correct field
+        dd.customer?.forEach(lbl => {
+          const o = document.createElement("option");
+          o.value = lbl; o.textContent = lbl;
+          customerSel.appendChild(o);
+        });
+      }
     }
-  })();
+  } catch (e) {
+    console.warn("[initDropdowns] failed", e);
+  }
+})();
+
 // Refresh subcontractor list whenever Branch changes
 document.getElementById("branchSelect")?.addEventListener("change", loadSubcontractorsForSelectedBranch);
 
 // Initial load (in case a Branch is preselected or after Branch options are filled)
 loadSubcontractorsForSelectedBranch();
 
-async function loadSubcontractorsForSelectedBranch() {
-  const branchSel = document.getElementById("branchSelect");
-  const subSel    = document.getElementById("subcontractorCompanySelect");
-  if (!subSel) return;
-
-  const label = selectedOptionText(branchSel);
-  if (!label) { clearSelectKeepPlaceholder(subSel); return; }
-
-  const svc = new AirtableService();
+// patch.js — FULL replacement for loadSubcontractorsForSelectedBranch
+async function loadSubcontractorsForSelectedBranch(ev) {
   try {
-    const opts = await svc.fetchSubcontractorOptionsFilteredByBranch(label);
-    const pairs = (opts || []).map(o => ({ value: o.id, label: o.label }));
-    populateSelectPairs(subSel, pairs);
+    const svc = new AirtableService();
+    const APP_MODE = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
+    const branchSel = document.getElementById("branchSelect");
+    const subcontractorSel = document.getElementById("subcontractorCompanySelect");
+
+    // Guard DOM
+    if (!branchSel || !subcontractorSel) return;
+
+    const branchLabel = String(branchSel.value || "").trim();
+    subcontractorSel.innerHTML = ""; // clear first
+
+    if (!branchLabel) return;
+
+    let labels = [];
+
+    if (APP_MODE === "vpo") {
+      // VPO path: use curated SUBCONTRACTOR source filtered by "Vanir Branch"
+      const pairs = await svc.fetchSubcontractorOptionsFilteredByBranch(branchLabel);
+      labels = (pairs || []).map(p => p.label);
+    } else {
+      // FILL-IN path: avoid curated SOURCES (they belong to VPO base and 403).
+      // 1) Try to derive from the Fill-In main table by scanning records.
+      //    Adjust the field names below if your Fill-In columns differ.
+      const recs = await svc.fetchAllRecords();
+      const set = new Set();
+
+      for (const r of recs) {
+        const f = r?.fields || {};
+        const branch = (typeof f["Branch"] === "string") ? f["Branch"].trim() : "";
+        // Support either a dedicated column like "Subcontractor" or any text you store:
+        const sub = (typeof f["Subcontractor"] === "string") ? f["Subcontractor"].trim() : "";
+        if (branch && sub && branch.toLowerCase() === branchLabel.toLowerCase()) {
+          set.add(sub);
+        }
+      }
+
+      labels = Array.from(set).sort((a,b) =>
+        a.localeCompare(b, undefined, { numeric:true, sensitivity:"base" })
+      );
+
+      // 2) If your Fill-In base *does* have a proper subcontractor source later,
+      //    swap this block to the curated call and remove the scan above:
+      // const pairs = await svc.fetchSubcontractorOptionsFilteredByBranch(branchLabel);
+      // labels = (pairs || []).map(p => p.label);
+    }
+
+    // Paint options
+    for (const lbl of labels) {
+      const opt = document.createElement("option");
+      opt.value = lbl;
+      opt.textContent = lbl;
+      subcontractorSel.appendChild(opt);
+    }
+    // Fire change for any downstream logic
+    subcontractorSel.dispatchEvent(new Event("change", { bubbles: true }));
   } catch (e) {
-    console.error("[subcontractor] load failed:", e);
-    clearSelectKeepPlaceholder(subSel);
+    console.warn("[subcontractor] load failed:", e);
+    const subcontractorSel = document.getElementById("subcontractorCompanySelect");
+    if (subcontractorSel) subcontractorSel.innerHTML = "";
   }
 }
+
 
 function clearSelectKeepPlaceholder(sel) {
   if (!sel) return;

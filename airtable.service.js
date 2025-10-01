@@ -1,16 +1,20 @@
 (function (global) {
   "use strict";
 
-  // === HARD-CODE YOUR CONFIG HERE ===
+  // === RUNTIME CONFIG HOOK (from app-config.js) ==============================
   const RUNTIME = (global.APP && global.APP.airtable) ? global.APP.airtable : null;
+const _startedTimers = new Set();
 
+  // === LIVE CONFIG OBJECT (mutable via setAirtableRuntimeConfig) =============
   let AIRTABLE_CONFIG = RUNTIME || {
-    // (your existing defaults stay here as a fallback)
+    // NOTE: Do NOT commit a real PAT in source. Prefer localStorage or env-injection.
     API_KEY: "patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054",
     BASE_ID: "appQDdkj6ydqUaUkE",
     TABLE_ID: "tblO72Aw6qplOEAhR",
     VIEW_ID: "viwf55KoUHJZfdEY6",
-    SOURCES: {
+    // If you don’t have correct Fill-In SOURCES yet, leave them empty here;
+    // your app-config.js should provide the right ones per mode.
+   SOURCES: {
       FIELD_MANAGER: { TABLE_ID: "tblj6Fp0rvN7QyjRv", VIEW_ID: "viwgHExXtj0VSlmbU",
         LABEL_CANDIDATES: ["Full Name","Name","Field Manager","Field Manager Name","Title"] },
       BRANCH: { TABLE_ID: "tblD2gLfkTtJYIhmK", VIEW_ID: "viw8tjumtr3Er8SuR",
@@ -21,8 +25,9 @@
         LABEL_CANDIDATES: ["Subcontractor Company Name","Company","Company Name","Name","Vendor","Vendor Name"] },
     }
   };
+
   // Setter to update config LIVE when the user toggles modes
-global.setAirtableRuntimeConfig = function(next){
+  global.setAirtableRuntimeConfig = function(next){
     if (!next || typeof next !== "object") return;
     AIRTABLE_CONFIG = {
       API_KEY: String(next.API_KEY || AIRTABLE_CONFIG.API_KEY || ""),
@@ -31,110 +36,124 @@ global.setAirtableRuntimeConfig = function(next){
       VIEW_ID: String(next.VIEW_ID || AIRTABLE_CONFIG.VIEW_ID || ""),
       SOURCES: { ...(AIRTABLE_CONFIG.SOURCES || {}), ...(next.SOURCES || {}) }
     };
-      global.AIRTABLE_CONFIG = AIRTABLE_CONFIG; // <-- add this so others see the update
-
+    global.AIRTABLE_CONFIG = AIRTABLE_CONFIG; // expose so others see the update
     try { console.debug("[AT] config updated:", { base: AIRTABLE_CONFIG.BASE_ID, table: AIRTABLE_CONFIG.TABLE_ID }); } catch {}
   };
 
-// ---------- Logging Utility ----------
-const AIRTABLE_LOGGER = (() => {
-  const LEVELS = { silent: 0, error: 1, warn: 2, info: 3, debug: 4, trace: 5 };
+  // ---------- Small shared formatter (MUST be top-level) ---------------------
+  function _fmtSrc(where, baseId, tableId, viewId){
+    return `[${where}] base=${baseId} table=${tableId} view=${viewId}`;
+  }
 
-  const QS = new URLSearchParams((typeof location !== "undefined" && location.search) || "");
-  const qsLevel = (QS.get("atlog") || "").toLowerCase();
-  const stored = (typeof localStorage !== "undefined" && localStorage.getItem("AIRTABLE_LOG_LEVEL")) || "";
-  let _level = (qsLevel in LEVELS) ? qsLevel : (stored in LEVELS) ? stored : "info";
+  // ---------- Logging Utility ------------------------------------------------
+  const AIRTABLE_LOGGER = (() => {
+    const LEVELS = { silent: 0, error: 1, warn: 2, info: 3, debug: 4, trace: 5 };
 
-  function setLevel(lvl) {
-    if (lvl in LEVELS) {
-      _level = lvl;
-      try { localStorage.setItem("AIRTABLE_LOG_LEVEL", _level); } catch {}
+    const QS = new URLSearchParams((typeof location !== "undefined" && location.search) || "");
+    const qsLevel = (QS.get("atlog") || "").toLowerCase();
+    const stored = (typeof localStorage !== "undefined" && localStorage.getItem("AIRTABLE_LOG_LEVEL")) || "";
+    let _level = (qsLevel in LEVELS) ? qsLevel : (stored in LEVELS) ? stored : "info";
+
+    function setLevel(lvl) {
+      if (lvl in LEVELS) {
+        _level = lvl;
+        try { localStorage.setItem("AIRTABLE_LOG_LEVEL", _level); } catch {}
+      }
     }
-  }
-  function getLevel() { return _level; }
-  function _enabled(min) { return LEVELS[_level] >= LEVELS[min]; }
-  function _ts() {
-    try {
-      const d = new Date();
-      return d.toTimeString().split(" ")[0] + "." + String(d.getMilliseconds()).padStart(3,"0");
-    } catch { return ""; }
-  }
+    function getLevel() { return _level; }
+    function _enabled(min) { return LEVELS[_level] >= LEVELS[min]; }
+    function _ts() {
+      try {
+        const d = new Date();
+        return d.toTimeString().split(" ")[0] + "." + String(d.getMilliseconds()).padStart(3,"0");
+      } catch { return ""; }
+    }
 
-  const baseStyle = "padding:2px 6px;border-radius:6px;font-weight:600;";
-  const tagStyle  = "background:#111;color:#fff;";
-  const dbgStyle  = "background:#6b7280;color:#fff;";
-  const infStyle  = "background:#2563eb;color:#fff;";
-  const wrnStyle  = "background:#b45309;color:#fff;";
-  const errStyle  = "background:#b91c1c;color:#fff;";
+    const baseStyle = "padding:2px 6px;border-radius:6px;font-weight:600;";
+    const tagStyle  = "background:#111;color:#fff;";
+    const dbgStyle  = "background:#6b7280;color:#fff;";
+    const infStyle  = "background:#2563eb;color:#fff;";
+    const wrnStyle  = "background:#b45309;color:#fff;";
+    const errStyle  = "background:#b91c1c;color:#fff;";
 
-  function _log(kind, tag, ...args) {
-    if (!_enabled(kind)) return;
-    const map = { trace: dbgStyle, debug: dbgStyle, info: infStyle, warn: wrnStyle, error: errStyle };
-    const style  = baseStyle + (map[kind] || dbgStyle);
-    const tstyle = baseStyle + tagStyle;
-    const prefix = [`%cAT%c${tag ? " " + tag : ""}%c ${_ts()}`, tstyle, style, ""];
-    const fn = console[kind] || console.log;
-    try { fn.apply(console, prefix.concat(args)); } catch {}
-  }
+    function _log(kind, tag, ...args) {
+      if (!_enabled(kind)) return;
+      const map = { trace: dbgStyle, debug: dbgStyle, info: infStyle, warn: wrnStyle, error: errStyle };
+      const style  = baseStyle + (map[kind] || dbgStyle);
+      const tstyle = baseStyle + tagStyle;
+      const prefix = [`%cAT%c${tag ? " " + tag : ""}%c ${_ts()}`, tstyle, style, ""];
+      const fn = console[kind] || console.log;
+      try { fn.apply(console, prefix.concat(args)); } catch {}
+    }
 
-  // Gate groups and timers too (previously unconditional)
-  function _canGroup()   { return _enabled("info"); }  // groups at >= info
-  function _canTime()    { return _enabled("debug"); } // timers at >= debug
-  function _canTimeEnd() { return _enabled("debug"); }
+    function _canGroup()   { return _enabled("info"); }  // groups at >= info
+    function _canTime()    { return _enabled("debug"); } // timers at >= debug
+    function _canTimeEnd() { return _enabled("debug"); }
 
-  const api = {
-    setLevel, getLevel, LEVELS,
-
-    trace: (...a)          => _log("trace","",...a),
-    debug: (tag,...a)      => _log("debug",tag,...a),
-    info:  (tag,...a)      => _log("info", tag,...a),
-    warn:  (tag,...a)      => _log("warn", tag,...a),
-    error: (tag,...a)      => _log("error",tag,...a),
-
-    group(tag, label) {
-      if (!_canGroup()) return;
-      try { console.group(`%cAT %c${tag} ${label||""}`, baseStyle+tagStyle, baseStyle+dbgStyle); } catch {}
-    },
-    groupEnd() {
-      if (!_canGroup()) return;
-      try { console.groupEnd(); } catch {}
-    },
-
-    time(label)   { if (!_canTime())    return; try { console.time(label); }   catch {} },
-    timeEnd(label){ if (!_canTimeEnd()) return; try { console.timeEnd(label);} catch {} },
-
-    maskToken(tok) {
+    function maskToken(tok) {
       if (!tok || typeof tok !== "string") return tok;
       const raw = tok.replace(/^Bearer\s+/i,"");
       if (raw.length <= 8) return "••"+raw.length;
       return raw.slice(0,4)+"…"+raw.slice(-4);
-    },
-    redactHeaders(h) {
+    }
+    function redactHeaders(h) {
       try {
         const out = { ...(h||{}) };
-        if (out.Authorization) out.Authorization = `Bearer ${this.maskToken(out.Authorization)}`;
+        if (out.Authorization) {
+          const raw = String(out.Authorization).replace(/^Bearer\s+/i,"");
+          out.Authorization = `Bearer ${maskToken(raw)}`;
+        }
         return out;
       } catch { return h; }
     }
-  };
 
-  return api;
-})();
+    const api = {
+      setLevel, getLevel, LEVELS,
+      trace: (...a)          => _log("trace","",...a),
+      debug: (tag,...a)      => _log("debug",tag,...a),
+      info:  (tag,...a)      => _log("info", tag,...a),
+      warn:  (tag,...a)      => _log("warn", tag,...a),
+      error: (tag,...a)      => _log("error",tag,...a),
+      group(tag, label) { if (_canGroup()) try { console.group(`%cAT %c${tag} ${label||""}`, baseStyle+tagStyle, baseStyle+dbgStyle); } catch {} },
+      groupEnd()       { if (_canGroup()) try { console.groupEnd(); } catch {} },
+     time(label) {
+  // only log timers at >= debug if that’s how your LEVELS gate them
+  try {
+    if (_startedTimers.has(label)) return; // avoid duplicate "already exists"
+    console.time(label);
+    _startedTimers.add(label);
+  } catch {}
+},
 
-// === add near top of the file (config section) ===
-const FEATURES = Object.freeze({
-  USE_METADATA_SCHEMA: false, // set to true only if your PAT has schema access
-  USE_CURATED_SOURCES: false, // set to true only if those tables actually exist
-});
+timeEnd(label) {
+  try {
+    if (!_startedTimers.has(label)) return; // avoid "does not exist"
+    console.timeEnd(label);
+    _startedTimers.delete(label);
+  } catch {}
+},
+      maskToken, redactHeaders
+    };
+    return api;
+  })();
 
-  // ---------- Core Service ----------
+  // === Feature flags (schema requires proper PAT scopes) =====================
+  const FEATURES = Object.freeze({
+    USE_METADATA_SCHEMA: false, // turn on only if PAT has schema access
+    USE_CURATED_SOURCES: false, // turn on only if those tables actually exist
+  });
+
+  // ==========================================================================
+  //                             AirtableService
+  // ==========================================================================
   class AirtableService {
     constructor(cfg = AIRTABLE_CONFIG) {
-      this.apiKey = cfg.API_KEY;
-      this.baseId = cfg.BASE_ID;
-      this.tableId = cfg.TABLE_ID;
-      this.viewId  = cfg.VIEW_ID;
-      this.sources = cfg.SOURCES || {};
+      const c = cfg || {};
+      this.apiKey = String(c.API_KEY || "").replace(/^Bearer\s+/i, "");
+      this.baseId = c.BASE_ID;
+      this.tableId = c.TABLE_ID;
+      this.viewId  = c.VIEW_ID;
+      this.sources = c.SOURCES || {};
 
       AIRTABLE_LOGGER.info("init","AirtableService ready",{
         baseId:this.baseId, tableId:this.tableId, viewId:this.viewId,
@@ -143,8 +162,14 @@ const FEATURES = Object.freeze({
     }
 
     headers() {
-      if (!this.apiKey) { AIRTABLE_LOGGER.error("headers","Missing Airtable API key."); throw new Error("Missing Airtable API key."); }
-      const h = { "Authorization": `Bearer ${this.apiKey}`, "Content-Type": "application/json" };
+      if (!this.apiKey) {
+        AIRTABLE_LOGGER.error("headers","Missing Airtable API key.");
+        throw new Error("Missing Airtable API key.");
+      }
+      const h = {
+        "Authorization": `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json"
+      };
       AIRTABLE_LOGGER.debug("headers", AIRTABLE_LOGGER.redactHeaders(h));
       return h;
     }
@@ -171,72 +196,9 @@ const FEATURES = Object.freeze({
       return id ? `${base}/${id}` : base;
     }
 
-    // === Metadata (Option A)
-    async fetchTablesSchema(signal){
-      if (this._schemaCache) return this._schemaCache;
-      const url = `https://api.airtable.com/v0/meta/bases/${this.baseId}/tables`;
-      const res = await this._fetch(url, { headers: this.headers(), signal }, "meta-tables");
-      if (!res.ok) throw new Error(`Metadata tables failed: ${res.status} ${await res.text()}`);
-      const j = await res.json();
-      this._schemaCache = j?.tables || [];
-      return this._schemaCache;
-    }
-
-   async fetchSubcontractorOptionsFilteredByBranch(branchLabel) {
-  const src = this.sources.SUBCONTRACTOR || {};
-  const { options } = await this.fetchOptionsFromSource({
-    tableId: src.TABLE_ID,
-    viewId:  src.VIEW_ID,
-    labelCandidates: src.LABEL_CANDIDATES || ["Subcontractor Company Name","Company","Company Name","Name"]
-  });
-
-  // Pull full records so we can inspect fields["Vanir Branch"]
-  const records = await this.fetchAllFromSource(src.TABLE_ID, src.VIEW_ID);
-  const byId = new Map(records.map(r => [r.id, r]));
-
-  const normalize = (s) => String(s || "").trim().toLocaleLowerCase();
-
-  // Keep any subcontractor whose "Vanir Branch" equals the selected Branch label (case-insensitive).
-  const filtered = options.filter(opt => {
-    const rec = byId.get(opt.id);
-    const f   = (rec && rec.fields) || {};
-    // "Vanir Branch" might be text or linked; support both
-    let sb = "";
-    const v = f["Vanir Branch"];
-    if (Array.isArray(v) && v.length) {
-      // linked record or multi-select: take first string-like entry
-      sb = typeof v[0] === "string" ? v[0] : (v[0]?.name || v[0]?.label || "");
-    } else if (typeof v === "string") {
-      sb = v;
-    }
-    return normalize(sb) === normalize(branchLabel);
-  });
-
-  return filtered; // [{id,label}]
-}
-
-    async fetchSelectOptionsFromSchema({ tableId, fieldName, signal }){
-      const tables = await this.fetchTablesSchema(signal);
-      const table = tables.find(t => t.id === tableId || t.name === tableId);
-      if (!table) throw new Error(`Table not found in schema: ${tableId}`);
-
-      const field = (table.fields || []).find(f => f.name === fieldName || f.id === fieldName);
-      if (!field) throw new Error(`Field not found in schema: ${fieldName} (table ${tableId})`);
-
-      const choices = field?.options?.choices || [];
-      const labels = choices
-        .map(c => (c?.name ?? "").trim())
-        .filter(Boolean)
-        .sort((a,b)=>a.localeCompare(b, undefined, {numeric:true, sensitivity:"base"}));
-
-      AIRTABLE_LOGGER.info("meta", `${fieldName} type=${field.type} choices=${labels.length}`);
-      return { type: field.type, options: labels, raw: field };
-    }
-
     // ---- internal fetch w/ logging ----
     async _fetch(url, options = {}, tag = "fetch") {
       AIRTABLE_LOGGER.group(tag, `${options.method||"GET"} ${url}`);
-      const safeOptions = { ...options, headers: AIRTABLE_LOGGER.redactHeaders(options.headers||{}) };
       const t0 = performance.now ? performance.now() : Date.now();
       try {
         const res = await fetch(url, options);
@@ -251,19 +213,42 @@ const FEATURES = Object.freeze({
     }
 
     // ---- main table ops ----
-    async fetchAllRecords(signal) {
-      AIRTABLE_LOGGER.group("fetchAllRecords","pagination begin");
-      let url = this.listUrl(); const out = []; let page=0;
-      while (url) {
-        page++; AIRTABLE_LOGGER.time(`page ${page}`);
-        const res = await this._fetch(url,{headers:this.headers(),signal},"list");
-        if (!res.ok) throw new Error(`List failed: ${res.status} ${await res.text()}`);
-        const j = await res.json(); const len = (j.records||[]).length;
-        out.push(...(j.records||[])); url = j.offset ? this.listUrl(j.offset) : null; AIRTABLE_LOGGER.timeEnd(`page ${page}`);
-        AIRTABLE_LOGGER.info("list",`page ${page} records`, len);
-      }
-      AIRTABLE_LOGGER.info("fetchAllRecords","total", out.length); AIRTABLE_LOGGER.groupEnd(); return out;
+   async fetchAllRecords(signal) {
+  // Unique run id for this pagination (prevents label collisions across overlapping calls)
+  const rid = Math.random().toString(36).slice(2, 8);
+
+  AIRTABLE_LOGGER.group("fetchAllRecords", `pagination begin [${rid}]`);
+
+  let url = this.listUrl();
+  const out = [];
+  let page = 0;
+
+  while (url) {
+    page++;
+    const tag = `fetchAll[${rid}] page ${page}`;
+
+    AIRTABLE_LOGGER.time(tag);
+    const res = await this._fetch(url, { headers: this.headers(), signal }, "list");
+    if (!res.ok) {
+      AIRTABLE_LOGGER.timeEnd(tag);
+      throw new Error(`List failed: ${res.status} ${await res.text()}`);
     }
+
+    const j   = await res.json();
+    const len = (j.records || []).length;
+
+    out.push(...(j.records || []));
+    url = j.offset ? this.listUrl(j.offset) : null;
+
+    AIRTABLE_LOGGER.timeEnd(tag);
+    AIRTABLE_LOGGER.info("list", `page ${page} records [${rid}]`, len);
+  }
+
+  AIRTABLE_LOGGER.info("fetchAllRecords", `total [${rid}]`, out.length);
+  AIRTABLE_LOGGER.groupEnd();
+  return out;
+}
+
 
     /** Legacy helper to scan current view for distinct values. */
     async fetchDropdowns({
@@ -291,16 +276,77 @@ const FEATURES = Object.freeze({
 
     // ---- source table ops (for linked fields) ----
     async fetchAllFromSource(tableId, viewId, signal) {
+      if (!tableId || !viewId) {
+        throw new Error(`Missing tableId/viewId for source. ${_fmtSrc("fetchAllFromSource", this.baseId, tableId, viewId)}`);
+      }
       let url = this.otherListUrl(tableId, viewId);
       const out = [];
       while (url) {
         const res = await this._fetch(url, { headers: this.headers(), signal }, "list-src");
-        if (!res.ok) throw new Error(`List (src) failed: ${res.status} ${await res.text()}`);
+        if (!res.ok) {
+          const body = await (async () => { try { return await res.text(); } catch { return ""; } })();
+          throw new Error(`List (src) failed: ${res.status} ${body || ""} ${_fmtSrc("fetchAllFromSource", this.baseId, tableId, viewId)}`);
+        }
         const j = await res.json();
         out.push(...(j.records || []));
         url = j.offset ? this.otherListUrl(tableId, viewId, j.offset) : null;
       }
       return out;
+    }
+
+    async _probeSource(tableId, viewId, signal) {
+      const base = `https://api.airtable.com/v0/${this.baseId}/${tableId}?view=${encodeURIComponent(viewId)}`;
+      const url  = `${base}&maxRecords=1`;
+      const res  = await this._fetch(url, { headers: this.headers(), signal }, "probe-src");
+      if (!res.ok) {
+        const txt = await (async () => { try { return await res.text(); } catch { return ""; } })();
+        const hint = (txt && txt.includes("INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND"))
+          ? "This table id likely doesn't exist in this base (or your PAT lacks access)."
+          : "";
+        throw new Error(`Probe failed: ${res.status} ${txt || ""} ${_fmtSrc("probe", this.baseId, tableId, viewId)} ${hint}`);
+      }
+      return true;
+    }
+
+    /** Returns { options:[{id,label}], idToLabel:Map, labelToId:Map } */
+    async fetchOptionsFromSource({ tableId, viewId, labelCandidates = [] } = {}) {
+      if (!tableId || !viewId) {
+        throw new Error(`fetchOptionsFromSource: missing tableId/viewId. ${_fmtSrc("args", this.baseId, tableId, viewId)}`);
+      }
+
+      // Quick probe to fail fast with a good message
+      await this._probeSource(tableId, viewId);
+
+      const recs = await this.fetchAllFromSource(tableId, viewId);
+
+      const rawOptions = [];
+      const idToLabel  = new Map();
+      const labelToId  = new Map();
+      const normalize = (s) => String(s || "").replace(/\s+/g, " ").trim();
+
+      for (const r of recs) {
+        const id    = r.id;
+        const label = normalize(AirtableService._pickLabel(r.fields || {}, labelCandidates));
+        if (!id || !label) continue;
+        rawOptions.push({ id, label });
+        idToLabel.set(id, label);
+        const key = label.toLocaleLowerCase();
+        if (!labelToId.has(key)) labelToId.set(key, id);
+      }
+
+      rawOptions.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }));
+
+      const seen = new Set();
+      const options = [];
+      for (const o of rawOptions) {
+        const key = o.label.toLocaleLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        options.push(o);
+      }
+
+      AIRTABLE_LOGGER.info("src", `Fetched ${options.length} options ${_fmtSrc("ok", this.baseId, tableId, viewId)}`);
+      return { options, idToLabel, labelToId };
     }
 
     static _pickLabel(fields, candidates) {
@@ -321,62 +367,112 @@ const FEATURES = Object.freeze({
       return "";
     }
 
-    /** Returns { options:[{id,label}], idToLabel:Map, labelToId:Map } */
-    async fetchOptionsFromSource({ tableId, viewId, labelCandidates = [] } = {}) {
-     const recs = await this.fetchAllFromSource(tableId, viewId);
-
-  // 1) Build raw options
-  const rawOptions = [];
-  const idToLabel  = new Map();
-  const labelToId  = new Map();
-
-  const normalize = (s) => String(s || "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  for (const r of recs) {
-    const id    = r.id;
-    const label = normalize(AirtableService._pickLabel(r.fields || {}, labelCandidates));
-    if (!id || !label) continue;
-
-    rawOptions.push({ id, label });
-    idToLabel.set(id, label);
-
-    // store the *first* id for each label; ignore subsequent duplicates
-    const key = label.toLocaleLowerCase();
-    if (!labelToId.has(key)) labelToId.set(key, id);
-  }
-
-  // 2) Sort by label (stable)
-  rawOptions.sort((a, b) =>
-    a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" })
-  );
-
-  // 3) Collapse duplicates by label (case-insensitive)
-  const seen = new Set();
-  const options = [];
-  for (const o of rawOptions) {
-    const key = o.label.toLocaleLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    options.push(o);
-  }
-
-  return { options, idToLabel, labelToId };
-}
-
     async fetchFieldManagerOptions() {
       const src = this.sources.FIELD_MANAGER || {};
-      return this.fetchOptionsFromSource({ tableId: src.TABLE_ID, viewId: src.VIEW_ID, labelCandidates: src.LABEL_CANDIDATES || [] });
+      if (!src.TABLE_ID || !src.VIEW_ID) {
+        throw new Error(`FIELD_MANAGER source missing table/view. ${_fmtSrc("FIELD_MANAGER", this.baseId, src.TABLE_ID, src.VIEW_ID)}`);
+      }
+      return this.fetchOptionsFromSource({
+        tableId: src.TABLE_ID,
+        viewId:  src.VIEW_ID,
+        labelCandidates: src.LABEL_CANDIDATES || ["Full Name","Name","Field Manager","Field Manager Name","Title"]
+      });
     }
+
     async fetchBranchOptions() {
       const src = this.sources.BRANCH || {};
-      return this.fetchOptionsFromSource({ tableId: src.TABLE_ID, viewId: src.VIEW_ID, labelCandidates: src.LABEL_CANDIDATES || [] });
+      if (!src.TABLE_ID || !src.VIEW_ID) {
+        throw new Error(`BRANCH source missing table/view. ${_fmtSrc("BRANCH", this.baseId, src.TABLE_ID, src.VIEW_ID)}`);
+      }
+      return this.fetchOptionsFromSource({
+        tableId: src.TABLE_ID,
+        viewId:  src.VIEW_ID,
+        labelCandidates: src.LABEL_CANDIDATES || ["Vanir Office","Branch","Name","Division","Office"]
+      });
     }
+
     async fetchCustomerOptions() {
       const src = this.sources.CUSTOMER || {};
-      return this.fetchOptionsFromSource({ tableId: src.TABLE_ID, viewId: src.VIEW_ID, labelCandidates: src.LABEL_CANDIDATES || [] });
+      if (!src.TABLE_ID || !src.VIEW_ID) {
+        throw new Error(`CUSTOMER source missing table/view. ${_fmtSrc("CUSTOMER", this.baseId, src.TABLE_ID, src.VIEW_ID)}`);
+      }
+      return this.fetchOptionsFromSource({
+        tableId: src.TABLE_ID,
+        viewId:  src.VIEW_ID,
+        labelCandidates: src.LABEL_CANDIDATES || ["Client Name","Client","Name"]
+      });
     }
+
+    async fetchSubcontractorOptionsFilteredByBranch(branchLabel) {
+      const src = this.sources.SUBCONTRACTOR || {};
+      const { options } = await this.fetchOptionsFromSource({
+        tableId: src.TABLE_ID,
+        viewId:  src.VIEW_ID,
+        labelCandidates: src.LABEL_CANDIDATES || ["Subcontractor Company Name","Company","Company Name","Name"]
+      });
+
+      const records = await this.fetchAllFromSource(src.TABLE_ID, src.VIEW_ID);
+      const byId = new Map(records.map(r => [r.id, r]));
+
+      const normalize = (s) => String(s || "").trim().toLocaleLowerCase();
+
+      const filtered = options.filter(opt => {
+        const rec = byId.get(opt.id);
+        const f   = (rec && rec.fields) || {};
+        let sb = "";
+        const v = f["Vanir Branch"];
+        if (Array.isArray(v) && v.length) {
+          sb = typeof v[0] === "string" ? v[0] : (v[0]?.name || v[0]?.label || "");
+        } else if (typeof v === "string") {
+          sb = v;
+        }
+        return normalize(sb) === normalize(branchLabel);
+      });
+
+      return filtered; // [{id,label}]
+    }
+
+    // === Metadata (Option A) =================================================
+    async fetchTablesSchema(signal){
+      if (this._schemaCache) return this._schemaCache;
+      const url = `https://api.airtable.com/v0/meta/bases/${this.baseId}/tables`;
+      const res = await this._fetch(url, { headers: this.headers(), signal }, "meta-tables");
+      if (!res.ok) throw new Error(`Metadata tables failed: ${res.status} ${await res.text()}`);
+      const j = await res.json();
+      this._schemaCache = j?.tables || [];
+      return this._schemaCache;
+    }
+
+    async fetchSelectOptionsFromSchema({ tableId, fieldName, signal }){
+      const tables = await this.fetchTablesSchema(signal);
+      const table = tables.find(t => t.id === tableId || t.name === tableId);
+      if (!table) throw new Error(`Table not found in schema: ${tableId}`);
+
+      const field = (table.fields || []).find(f => f.name === fieldName || f.id === fieldName);
+      if (!field) throw new Error(`Field not found in schema: ${fieldName} (table ${tableId})`);
+
+      const choices = field?.options?.choices || [];
+      const labels = choices
+        .map(c => (c?.name ?? "").trim())
+        .filter(Boolean)
+        .sort((a,b)=>a.localeCompare(b, undefined, {numeric:true, sensitivity:"base"}));
+
+      AIRTABLE_LOGGER.info("meta", `${fieldName} type=${field.type} choices=${labels.length}`);
+      return { type: field.type, options: labels, raw: field };
+    }
+
+    // === static helpers ======================================================
+    static config() {
+      return {
+        API_KEY: `Bearer ${AIRTABLE_LOGGER.maskToken(AIRTABLE_CONFIG.API_KEY)}`,
+        BASE_ID: AIRTABLE_CONFIG.BASE_ID,
+        TABLE_ID: AIRTABLE_CONFIG.TABLE_ID,
+        VIEW_ID: AIRTABLE_CONFIG.VIEW_ID,
+        SOURCES: AIRTABLE_CONFIG.SOURCES,
+      };
+    }
+    static setLogLevel(level) { AIRTABLE_LOGGER.setLevel(level); }
+    static getLogLevel() { return AIRTABLE_LOGGER.getLevel(); }
 
     // ---- CRUD main table ----
     async createRecord(fields) {
@@ -401,21 +497,9 @@ const FEATURES = Object.freeze({
       return await res.json();
       async function safeText(resp){ try { return await resp.text(); } catch { return ""; } }
     }
-
-    static config() {
-      return {
-        API_KEY: `Bearer ${AIRTABLE_LOGGER.maskToken(AIRTABLE_CONFIG.API_KEY)}`,
-        BASE_ID: AIRTABLE_CONFIG.BASE_ID,
-        TABLE_ID: AIRTABLE_CONFIG.TABLE_ID,
-        VIEW_ID: AIRTABLE_CONFIG.VIEW_ID,
-        SOURCES: AIRTABLE_CONFIG.SOURCES,
-      };
-    }
-    static setLogLevel(level) { AIRTABLE_LOGGER.setLevel(level); }
-    static getLogLevel() { return AIRTABLE_LOGGER.getLevel(); }
   }
 
-  // ====== Helpers (GLOBAL so both bootstrap + fallback can use them) ======
+  // ====== Simple DOM helper ==================================================
   function populateSelect(sel, labels){
     if (!sel) return;
     sel.innerHTML = "";
@@ -428,123 +512,115 @@ const FEATURES = Object.freeze({
   }
   global.populateSelect = populateSelect; // expose for any external callers
 
-  // ====== Bootstrap after DOM is ready ======
- document.addEventListener("DOMContentLoaded", async () => {
-  // quiet by default (you can raise via ?atlog=debug)
-  try { AIRTABLE_LOGGER.setLevel("silent"); } catch {}
+  // ====== Bootstrap after DOM is ready ======================================
+  document.addEventListener("DOMContentLoaded", async () => {
+    try { AIRTABLE_LOGGER.setLevel("silent"); } catch {}
 
-  // service bound to the *current* runtime config
-  const at = new AirtableService();
-
-  // follow the active app's config (no hardcoding)
-  const MAIN_TABLE_ID = (typeof AIRTABLE_CONFIG !== "undefined" ? AIRTABLE_CONFIG.TABLE_ID : "");
-  const BASE_ID       = (typeof AIRTABLE_CONFIG !== "undefined" ? AIRTABLE_CONFIG.BASE_ID  : "");
-
-  // ---- small helpers --------------------------------------------------------
-  function labelsFromPairs(pairs) {
-    try { return (pairs || []).map(p => p.label).filter(Boolean); } catch { return []; }
-  }
-
-  // fill a <select> from metadata schema (if enabled and PAT has access)
-  async function trySchemaFill(fieldName, sel) {
-    if (!FEATURES || !FEATURES.USE_METADATA_SCHEMA) return false;
+    // Ensure runtime overrides are applied even if scripts raced
     try {
-      const r = await at.fetchSelectOptionsFromSchema({ tableId: MAIN_TABLE_ID, fieldName });
-      const options = Array.isArray(r?.options) ? r.options : [];
-      if (options.length) { populateSelect(sel, options); AIRTABLE_LOGGER.info("schema", `${fieldName}: ${options.length} options`); return true; }
-    } catch (e) {
-      AIRTABLE_LOGGER.warn("schema", `Failed for ${fieldName}`, e);
-    }
-    return false;
-  }
+      if (global.APP && global.APP.airtable && typeof global.setAirtableRuntimeConfig === "function") {
+        global.setAirtableRuntimeConfig(global.APP.airtable);
+      }
+    } catch {}
 
-  // fill a <select> from curated source tables (if enabled and present)
-  async function tryCuratedSource(sourceKey, sel) {
-    if (!FEATURES || !FEATURES.USE_CURATED_SOURCES) return false;
+    const at = new AirtableService();
+
+    const MAIN_TABLE_ID = (typeof AIRTABLE_CONFIG !== "undefined" ? AIRTABLE_CONFIG.TABLE_ID : "");
+    const BASE_ID       = (typeof AIRTABLE_CONFIG !== "undefined" ? AIRTABLE_CONFIG.BASE_ID  : "");
+
+    function labelsFromPairs(pairs) {
+      try { return (pairs || []).map(p => p.label).filter(Boolean); } catch { return []; }
+    }
+
+    async function trySchemaFill(fieldName, sel) {
+      if (!FEATURES || !FEATURES.USE_METADATA_SCHEMA) return false;
+      try {
+        const r = await at.fetchSelectOptionsFromSchema({ tableId: MAIN_TABLE_ID, fieldName });
+        const options = Array.isArray(r?.options) ? r.options : [];
+        if (options.length) { populateSelect(sel, options); AIRTABLE_LOGGER.info("schema", `${fieldName}: ${options.length} options`); return true; }
+      } catch (e) {
+        AIRTABLE_LOGGER.warn("schema", `Failed for ${fieldName}`, e);
+      }
+      return false;
+    }
+
+    async function tryCuratedSource(sourceKey, sel) {
+      if (!FEATURES || !FEATURES.USE_CURATED_SOURCES) return false;
+      try {
+        const src = AIRTABLE_CONFIG?.SOURCES?.[sourceKey];
+        if (!src) return false;
+        const { options } = await at.fetchOptionsFromSource({
+          tableId: src.TABLE_ID, viewId: src.VIEW_ID, labelCandidates: src.LABEL_CANDIDATES || []
+        });
+        const labels = labelsFromPairs(options);
+        if (labels.length) { populateSelect(sel, labels); AIRTABLE_LOGGER.info("curated", `${sourceKey}: ${labels.length} options`); return true; }
+      } catch (e) {
+        AIRTABLE_LOGGER.warn("curated", `Source ${sourceKey} failed`, e);
+      }
+      return false;
+    }
+
+    async function tryLegacyScrape(fieldName, sel) {
+      try {
+        const dd = await at.fetchDropdowns({ neededByField: "Needed By", reasonField: "Reason For Fill In" });
+        const map = {
+          "Needed By": dd?.neededBy || [],
+          "Reason For Fill In": dd?.reason || []
+        };
+        const arr = map[fieldName] || [];
+        if (arr.length) { populateSelect(sel, arr); AIRTABLE_LOGGER.info("legacy", `Filled ${fieldName} from view (${arr.length})`); return true; }
+      } catch (e) {
+        AIRTABLE_LOGGER.warn("legacy", `Scrape failed for ${fieldName}`, e);
+      }
+      return false;
+    }
+
+    const neededBySel = document.getElementById("neededBySelect");
+    const reasonSel   = document.getElementById("reasonSelect");
+
     try {
-      const src = AIRTABLE_CONFIG?.SOURCES?.[sourceKey];
-      if (!src) return false;
-      const { options } = await at.fetchOptionsFromSource({
-        tableId: src.TABLE_ID, viewId: src.VIEW_ID, labelCandidates: src.LABEL_CANDIDATES || []
-      });
-      const labels = labelsFromPairs(options);
-      if (labels.length) { populateSelect(sel, labels); AIRTABLE_LOGGER.info("curated", `${sourceKey}: ${labels.length} options`); return true; }
+      const cached = (global.ATOPTS && typeof ATOPTS.load === "function") ? ATOPTS.load(BASE_ID) : null;
+      if (cached) {
+        if (neededBySel && Array.isArray(cached.neededBy)) populateSelect(neededBySel, cached.neededBy);
+        if (reasonSel   && Array.isArray(cached.reason))   populateSelect(reasonSel,   cached.reason);
+
+        document.querySelectorAll('select[data-airtable-field]').forEach(sel => {
+          const f = (sel.getAttribute('data-airtable-field') || "").toLowerCase();
+          if (f.includes("needed") && f.includes("by") && Array.isArray(cached.neededBy)) populateSelect(sel, cached.neededBy);
+          if (f.includes("reason") && Array.isArray(cached.reason)) populateSelect(sel, cached.reason);
+        });
+      }
     } catch (e) {
-      AIRTABLE_LOGGER.warn("curated", `Source ${sourceKey} failed`, e);
+      AIRTABLE_LOGGER.warn("cache", "hydrate failed", e);
     }
-    return false;
-  }
 
-  // last resort: scan current view values (works with text fields)
-  async function tryLegacyScrape(fieldName, sel) {
-    try {
-      const dd = await at.fetchDropdowns({ neededByField: "Needed By", reasonField: "Reason For Fill In" });
-      const map = {
-        "Needed By": dd?.neededBy || [],
-        "Reason For Fill In": dd?.reason || []
-      };
-      const arr = map[fieldName] || [];
-      if (arr.length) { populateSelect(sel, arr); AIRTABLE_LOGGER.info("legacy", `Filled ${fieldName} from view (${arr.length})`); return true; }
-    } catch (e) {
-      AIRTABLE_LOGGER.warn("legacy", `Scrape failed for ${fieldName}`, e);
+    if (neededBySel) {
+      let ok = await trySchemaFill("Needed By", neededBySel);
+      if (!ok) ok = await tryCuratedSource("NEEDED_BY", neededBySel);
+      if (!ok) ok = await tryLegacyScrape("Needed By", neededBySel);
+      if (!ok) AIRTABLE_LOGGER.warn("ui", "Needed By: no options found.");
     }
-    return false;
-  }
 
-  // ---- cache-first hydrate (no network on toggle if cached) -----------------
-  const neededBySel = document.getElementById("neededBySelect");
-  const reasonSel   = document.getElementById("reasonSelect");
-
-  try {
-    const cached = (window.ATOPTS && typeof ATOPTS.load === "function") ? ATOPTS.load(BASE_ID) : null;
-    if (cached) {
-      if (neededBySel && Array.isArray(cached.neededBy)) populateSelect(neededBySel, cached.neededBy);
-      if (reasonSel   && Array.isArray(cached.reason))   populateSelect(reasonSel,   cached.reason);
-
-      // also hydrate any generic selects that clearly map to these fields
-      document.querySelectorAll('select[data-airtable-field]').forEach(sel => {
-        const f = (sel.getAttribute('data-airtable-field') || "").toLowerCase();
-        if (f.includes("needed") && f.includes("by") && Array.isArray(cached.neededBy)) populateSelect(sel, cached.neededBy);
-        if (f.includes("reason") && Array.isArray(cached.reason)) populateSelect(sel, cached.reason);
-      });
-
-      // If you want *zero* Airtable requests when cache exists, uncomment:
-      // return;
+    if (reasonSel) {
+      let ok = await trySchemaFill("Reason For Fill In", reasonSel);
+      if (!ok) ok = await tryCuratedSource("REASON", reasonSel);
+      if (!ok) ok = await tryLegacyScrape("Reason For Fill In", reasonSel);
+      if (!ok) AIRTABLE_LOGGER.warn("ui", "Reason For Fill In: no options found.");
     }
-  } catch (e) {
-    AIRTABLE_LOGGER.warn("cache", "hydrate failed", e);
-  }
 
-  // ---- targeted fills (schema -> curated -> legacy) -------------------------
-  if (neededBySel) {
-    let ok = await trySchemaFill("Needed By", neededBySel);
-    if (!ok) ok = await tryCuratedSource("NEEDED_BY", neededBySel);
-    if (!ok) ok = await tryLegacyScrape("Needed By", neededBySel);
-    if (!ok) AIRTABLE_LOGGER.warn("ui", "Needed By: no options found.");
-  }
-
-  if (reasonSel) {
-    let ok = await trySchemaFill("Reason For Fill In", reasonSel);
-    if (!ok) ok = await tryCuratedSource("REASON", reasonSel);
-    if (!ok) ok = await tryLegacyScrape("Reason For Fill In", reasonSel);
-    if (!ok) AIRTABLE_LOGGER.warn("ui", "Reason For Fill In: no options found.");
-  }
-
-  // ---- auto-wire any <select data-airtable-field="..."> ---------------------
-  const autoSelects = Array.from(document.querySelectorAll('select[data-airtable-field]'));
-  for (const sel of autoSelects) {
-    const fieldName = sel.getAttribute('data-airtable-field') || "";
-    let ok = await trySchemaFill(fieldName, sel);
-    if (!ok) {
-      const fl = fieldName.toLowerCase();
-      if (fl.includes("needed") && fl.includes("by")) ok = await tryCuratedSource("NEEDED_BY", sel);
-      if (!ok && fl.includes("reason")) ok = await tryCuratedSource("REASON", sel);
+    const autoSelects = Array.from(document.querySelectorAll('select[data-airtable-field]'));
+    for (const sel of autoSelects) {
+      const fieldName = sel.getAttribute('data-airtable-field') || "";
+      let ok = await trySchemaFill(fieldName, sel);
+      if (!ok) {
+        const fl = fieldName.toLowerCase();
+        if (fl.includes("needed") && fl.includes("by")) ok = await tryCuratedSource("NEEDED_BY", sel);
+        if (!ok && fl.includes("reason")) ok = await tryCuratedSource("REASON", sel);
+      }
+      if (!ok) ok = await tryLegacyScrape(fieldName, sel);
+      if (!ok) AIRTABLE_LOGGER.warn("ui", `${fieldName}: no options found.`);
     }
-    if (!ok) ok = await tryLegacyScrape(fieldName, sel);
-    if (!ok) AIRTABLE_LOGGER.warn("ui", `${fieldName}: no options found.`);
-  }
-});
-
+  });
 
   // Expose to window
   global.AirtableService = AirtableService;
@@ -552,16 +628,13 @@ const FEATURES = Object.freeze({
   global.AIRTABLE_LOGGER = AIRTABLE_LOGGER;
 
 })(window);
+
+// ============================================================================
+// persistSelect helper (unchanged semantics, safe placement after service file)
+// ============================================================================
 (function(){
   "use strict";
 
-  /**
-   * Persist a select's value in localStorage and restore it when options appear.
-   * Works even if options are added later (e.g., after an async fetch).
-   *
-   * @param {HTMLSelectElement|string} elOrSelector - The <select> or a CSS selector.
-   * @param {string} key - localStorage key to use.
-   */
   function persistSelect(elOrSelector, key){
     const sel = (typeof elOrSelector === "string")
       ? document.querySelector(elOrSelector)
@@ -570,49 +643,62 @@ const FEATURES = Object.freeze({
 
     const LS_KEY = "persist_select__" + key;
 
-    // Save on change
     sel.addEventListener("change", () => {
       try { localStorage.setItem(LS_KEY, sel.value ?? ""); } catch {}
     });
 
-    // Try an immediate restore (in case options are already present)
     tryRestore();
 
-    // If options are added later, observe and restore once
     const obs = new MutationObserver(() => tryRestore(true));
     obs.observe(sel, { childList: true });
 
     function tryRestore(fromObserver = false){
       const saved = (function(){ try { return localStorage.getItem(LS_KEY) || ""; } catch { return ""; } })();
       if (!saved) return;
-
-      // If the option exists, set and (if from observer) stop observing.
       const has = Array.from(sel.options).some(o => o.value === saved);
       if (has){
         sel.value = saved;
-        // Fire a change event so any dependent logic runs
         sel.dispatchEvent(new Event("change", { bubbles: true }));
         if (fromObserver) obs.disconnect();
       }
     }
   }
 
-  /**
-   * Auto-bind: any <select data-persist-key="..."> will be persisted automatically.
-   */
   document.addEventListener("DOMContentLoaded", () => {
-    // 1) Auto-bind all selects that opt in via data attribute
+    // Place in whichever file currently starts your app (cart.js or patch.js).
+// Call this from DOMContentLoaded (and remove other duplicate starters).
+window.__AT_BOOT_PROMISE ||= (async () => {
+  if (window.APP?.airtable && typeof setAirtableRuntimeConfig === "function") {
+    setAirtableRuntimeConfig(window.APP.airtable);
+  }
+  // Only ONE of these should run here:
+  if (typeof initDropdowns === "function") {
+    await initDropdowns();
+  } else if (typeof startAirtable === "function") {
+    await startAirtable();
+  }
+  return true;
+})();
+
     document.querySelectorAll("select[data-persist-key]").forEach(sel => {
       const key = sel.getAttribute("data-persist-key");
       persistSelect(sel, key);
     });
-
-    // 2) (Optional) Explicit binds by ID if you prefer:
-    // persistSelect("#branchSelect", "branch");
-    // persistSelect("#neededBySelect", "neededBy");
-    // persistSelect("#reasonSelect", "reason");
   });
 
-  // Expose in case you want to call it manually elsewhere
   window.persistSelect = persistSelect;
+})();
+// Place in whichever file currently starts your app (cart.js or patch.js).
+// Call this from DOMContentLoaded (and remove other duplicate starters).
+window.__AT_BOOT_PROMISE ||= (async () => {
+  if (window.APP?.airtable && typeof setAirtableRuntimeConfig === "function") {
+    setAirtableRuntimeConfig(window.APP.airtable);
+  }
+  // Only ONE of these should run here:
+  if (typeof initDropdowns === "function") {
+    await initDropdowns();
+  } else if (typeof startAirtable === "function") {
+    await startAirtable();
+  }
+  return true;
 })();

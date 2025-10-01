@@ -110,87 +110,170 @@ function atBaseId() {
 }
 
 // FULL: initDropdowns (cache-first)
+// cart.js — FULL replacement for initDropdowns
 async function initDropdowns(service) {
-  if (!service) service = new AirtableService();
-  const baseId = atBaseId();
+  const at = service || new AirtableService();
 
-  // show busy state
-  ["branch","fieldMgr","neededBy","reason","subcontractorCompany"].forEach(k => els[k]?.setAttribute("aria-busy","true"));
+  // UI elements
+  const branchSel        = document.getElementById("branchSelect");
+  const fieldMgrSel      = document.getElementById("fieldManagerSelect");
+  const customerSel      = document.getElementById("customerSelect");
+  const subcontractorSel = document.getElementById("subcontractorCompanySelect");
 
-  // 1) CACHE PATH — no network
-  const cached = (window.ATOPTS && typeof ATOPTS.load === "function") ? ATOPTS.load(baseId) : null;
-  if (cached) {
-    // Field Manager / Branch
-    if (Array.isArray(cached.fmOptions)) populateSelectWithPairs(els.fieldMgr, cached.fmOptions);
-    if (Array.isArray(cached.brOptions)) populateSelectWithPairs(els.branch,   cached.brOptions);
+  // Optional Fill-In only selects
+  const neededBySel      = document.getElementById("neededBySelect");
+  const reasonSel        = document.getElementById("reasonSelect");
 
-    // Needed By / Reason (Fill-In)
-    if (els.neededBy && Array.isArray(cached.neededBy)) populateSelectStrings(els.neededBy, cached.neededBy);
-    if (els.reason   && Array.isArray(cached.reason))   populateSelectStrings(els.reason,   cached.reason);
+  // Mode + base info
+  const APP_MODE = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
+  const BASE_ID  = (window.AIRTABLE_CONFIG && window.AIRTABLE_CONFIG.BASE_ID) || "";
 
-    // restore id/label maps if you use them
-    if (cached.fmPairsIdToLabel)  maps.fieldMgr.idToLabel = new Map(cached.fmPairsIdToLabel);
-    if (cached.fmPairsLabelToId)  maps.fieldMgr.labelToId = new Map(cached.fmPairsLabelToId);
-    if (cached.brPairsIdToLabel)  maps.branch.idToLabel   = new Map(cached.brPairsIdToLabel);
-    if (cached.brPairsLabelToId)  maps.branch.labelToId   = new Map(cached.brPairsLabelToId);
-
-    // subcontractors for current branch — cache per branch
-    await refreshSubcontractorsForBranch(service); // uses per-branch cache; see below
-
-    // done: release busy and EXIT (no fetch)
-    ["branch","fieldMgr","neededBy","reason","subcontractorCompany"].forEach(k => els[k]?.removeAttribute("aria-busy"));
-    return;
+  // Try cache hydrate first (per base)
+  try {
+    if (window.ATOPTS && typeof ATOPTS.load === "function") {
+      const cached = ATOPTS.load(BASE_ID);
+      if (cached) {
+        if (Array.isArray(cached.branch)        && branchSel)        populateSelect(branchSel, cached.branch);
+        if (Array.isArray(cached.fieldManager)  && fieldMgrSel)      populateSelect(fieldMgrSel, cached.fieldManager);
+        if (Array.isArray(cached.customer)      && customerSel)      populateSelect(customerSel, cached.customer);
+        if (Array.isArray(cached.subcontractor) && subcontractorSel) populateSelect(subcontractorSel, cached.subcontractor);
+        if (Array.isArray(cached.neededBy)      && neededBySel)      populateSelect(neededBySel, cached.neededBy);
+        if (Array.isArray(cached.reason)        && reasonSel)        populateSelect(reasonSel, cached.reason);
+      }
+    }
+  } catch (e) {
+    console.warn("[initDropdowns] cache hydrate failed", e);
   }
 
-  // 2) FIRST-TIME PATH — one fetch to seed cache
-  try {
-    const [{ options: fmOptions, idToLabel: fmIdToLabel, labelToId: fmLabelToId },
-           { options: brOptions, idToLabel: brIdToLabel, labelToId: brLabelToId }] = await Promise.all([
-      service.fetchFieldManagerOptions(),
-      service.fetchBranchOptions(),
+  // Helper to persist to cache per base after we load fresh values
+  function saveOptsToCache(opts) {
+    try {
+      if (!window.ATOPTS || typeof ATOPTS.save !== "function") return;
+      ATOPTS.save(BASE_ID, opts || {});
+    } catch {}
+  }
+
+  // ---- Loaders --------------------------------------------------------------
+
+  async function loadFromCuratedSources() {
+    // VPO behavior (unchanged): use SOURCES tables
+    const [fm, br, cu] = await Promise.all([
+      at.fetchFieldManagerOptions(), // {options:[{id,label}]}
+      at.fetchBranchOptions(),
+      at.fetchCustomerOptions(),
     ]);
 
-    maps.fieldMgr.idToLabel = fmIdToLabel; maps.fieldMgr.labelToId = fmLabelToId;
-    maps.branch.idToLabel   = brIdToLabel; maps.branch.labelToId   = brLabelToId;
+    if (fieldMgrSel)      populateSelect(fieldMgrSel,      (fm.options || []).map(o => o.label));
+    if (branchSel)        populateSelect(branchSel,        (br.options || []).map(o => o.label));
+    if (customerSel)      populateSelect(customerSel,      (cu.options || []).map(o => o.label));
 
-    const { filtered: brFiltered } = filterToUSCities(brOptions);
+    // Subcontractor is filtered by branch selection; we wire a change handler below
+    // Needed By / Reason (if you use curated tables for them, add similar calls)
+    saveOptsToCache({
+      branch:        (br.options || []).map(o => o.label),
+      fieldManager:  (fm.options || []).map(o => o.label),
+      customer:      (cu.options || []).map(o => o.label)
+    });
+  }
 
-    populateSelectWithPairs(els.fieldMgr, fmOptions.map(o => ({ value: o.id, label: o.label })));
-    populateSelectWithPairs(els.branch,   brFiltered.map(o => ({ value: o.id, label: o.label })));
-
-    // Fill-In specific string dropdowns if present
-    let neededBy = null, reason = null;
-    if (els.neededBy || els.reason) {
-      const d = await service.fetchDropdowns({
-        branchField: "___ignore_branch___",
-        fieldMgrField: "___ignore_fm___",
-        neededByField: "Needed By",
-        reasonField:  "Reason For Fill In",
-      });
-      neededBy = d.neededBy; reason = d.reason;
-      if (els.neededBy) populateSelectStrings(els.neededBy, neededBy);
-      if (els.reason)   populateSelectStrings(els.reason, reason);
-    }
-
-    // seed cache for this base
-    ATOPTS?.save?.(baseId, {
-      fmOptions: fmOptions.map(o => ({ value: o.id, label: o.label })),
-      brOptions: brFiltered.map(o => ({ value: o.id, label: o.label })),
-      neededBy, reason,
-      fmPairsIdToLabel: Array.from(fmIdToLabel.entries()),
-      fmPairsLabelToId: Array.from(fmLabelToId.entries()),
-      brPairsIdToLabel: Array.from(brIdToLabel.entries()),
-      brPairsLabelToId: Array.from(brLabelToId.entries()),
-      subcontractorsByBranch: {} // filled lazily
+  async function loadFromMainViewScan() {
+    // Fill-In safe path: scan distinct values from the **Fill-In main view**
+    // You can rename the field names below if your Fill-In column names differ.
+    const dd = await at.fetchDropdowns({
+      branchField:     "Branch",                // change if Fill-In uses "Vanir Office" etc.
+      fieldMgrField:   "Field Manager",         // change if needed
+      neededByField:   "Needed By",
+      reasonField:     "Reason For Fill In",
     });
 
-    await refreshSubcontractorsForBranch(service);
-  } catch (err) {
-    console.error("[initDropdowns] failed", err);
-  } finally {
-    ["branch","fieldMgr","neededBy","reason","subcontractorCompany"].forEach(k => els[k]?.removeAttribute("aria-busy"));
+    if (branchSel)        populateSelect(branchSel,        dd.branch || []);
+    if (fieldMgrSel)      populateSelect(fieldMgrSel,      dd.fieldManager || []);
+    if (customerSel)      populateSelect(customerSel,      []);            // optional: Fill-In may not need customer
+    if (neededBySel)      populateSelect(neededBySel,      dd.neededBy || []);
+    if (reasonSel)        populateSelect(reasonSel,        dd.reason || []);
+
+    // Subcontractor: for Fill-In we can either leave blank until branch is chosen,
+    // or do an unfiltered scan of subcontractors if you have them as text in the main table.
+    // Here we leave it to be populated when a branch is selected (see handler below).
+
+    saveOptsToCache({
+      branch:        dd.branch || [],
+      fieldManager:  dd.fieldManager || [],
+      neededBy:      dd.neededBy || [],
+      reason:        dd.reason || []
+    });
+  }
+
+  // ---- Pick strategy by mode -----------------------------------------------
+  if (APP_MODE === "fillin") {
+    // Avoid curated source calls that 403 due to cross-base table IDs
+    await loadFromMainViewScan();
+  } else {
+    // VPO: keep curated sources
+    await loadFromCuratedSources();
+  }
+
+  // ---- Subcontractor wire-up (works in both modes) -------------------------
+  // On branch selection, try to load subcontractors filtered by branch.
+  async function loadSubcontractorsForSelectedBranch(ev) {
+    try {
+      const branchLabel = (branchSel && branchSel.value) ? branchSel.value.trim() : "";
+      if (!branchLabel) {
+        if (subcontractorSel) subcontractorSel.innerHTML = "";
+        return;
+      }
+
+      let opts = [];
+      if (APP_MODE === "fillin") {
+        // Fill-In: if your SUBCONTRACTOR source isn’t available in this base,
+        // fallback to using the main table if it has a text column for subs.
+        // Example (uncomment/adjust if you store subcontractor names in main table):
+        //
+        // const recs = await at.fetchAllRecords();
+        // const set = new Set();
+        // for (const r of recs) {
+        //   const f = r.fields || {};
+        //   if ((f["Branch"] || "") === branchLabel && typeof f["Subcontractor"] === "string") {
+        //     set.add(String(f["Subcontractor"]).trim());
+        //   }
+        // }
+        // opts = Array.from(set).sort();
+
+        // If you DO have a proper SUBCONTRACTOR source in Fill-In base later,
+        // just use the AirtableService filter helper:
+        // const pairs = await at.fetchSubcontractorOptionsFilteredByBranch(branchLabel);
+        // opts = (pairs || []).map(p => p.label);
+      } else {
+        // VPO path (curated)
+        const pairs = await at.fetchSubcontractorOptionsFilteredByBranch(branchLabel);
+        opts = (pairs || []).map(p => p.label);
+      }
+
+      if (subcontractorSel) {
+        subcontractorSel.innerHTML = "";
+        for (const lbl of opts) {
+          const o = document.createElement("option");
+          o.value = lbl;
+          o.textContent = lbl;
+          subcontractorSel.appendChild(o);
+        }
+      }
+    } catch (e) {
+      console.warn("[subcontractor] load failed:", e);
+      if (subcontractorSel) subcontractorSel.innerHTML = "";
+    }
+  }
+
+  if (branchSel) {
+    branchSel.removeEventListener("change", loadSubcontractorsForSelectedBranch);
+    branchSel.addEventListener("change", loadSubcontractorsForSelectedBranch);
+    // trigger once if branch already chosen
+    if (branchSel.value) {
+      try { await loadSubcontractorsForSelectedBranch(); } catch {}
+    }
   }
 }
+
 
 // FULL: refreshSubcontractorsForBranch (per-branch cache; no fetch if cached)
 async function refreshSubcontractorsForBranch(service) {
