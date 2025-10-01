@@ -28,6 +28,106 @@
       return { cart: [] };
     }
   }
+// ========= Drop into patch.js =========
+async function populateDropdownsFromLinkedTables() {
+  const svc = new AirtableService();
+
+  // helpers
+  const byAlpha = (a,b)=>a.localeCompare(b, undefined, {numeric:true, sensitivity:"base"});
+  function fill(sel, arr){
+    if (!sel) return;
+    sel.innerHTML = "";
+    (arr||[]).forEach(v => { const o=document.createElement("option"); o.value=v; o.textContent=v; sel.appendChild(o); });
+  }
+  function pickLabel(fields, candidates){
+    for (const key of (candidates || [])) {
+      const v = fields?.[key];
+      if (v == null) continue;
+      if (typeof v === "string" && v.trim()) return v.trim();
+      if (typeof v === "number") return String(v);
+      if (Array.isArray(v) && v.length) {
+        const x = v[0];
+        if (typeof x === "string") return x.trim();
+        if (x && typeof x === "object") {
+          const s = String(x.name || x.label || x.value || x.id || "").trim();
+          if (s) return s;
+        }
+      }
+      if (typeof v === "object") {
+        const s = String(v.name || v.label || v.value || v.id || "").trim();
+        if (s) return s;
+      }
+    }
+    // fallback: first string-ish field
+    for (const [k,v] of Object.entries(fields || {})) {
+      if (typeof v === "string" && v.trim()) return v.trim();
+      if (typeof v === "number") return String(v);
+      if (Array.isArray(v) && v.length) {
+        const x = v[0];
+        if (typeof x === "string") return x.trim();
+        if (x && typeof x === "object") {
+          const s = String(x.name || x.label || x.value || x.id || "").trim();
+          if (s) return s;
+        }
+      }
+    }
+    return "";
+  }
+
+  // read sources from runtime config
+  const SRC = (window.AIRTABLE_CONFIG && window.AIRTABLE_CONFIG.SOURCES) || {};
+  const NEED = ["BRANCH","FIELD_MANAGER","CUSTOMER"];
+  for (const k of NEED) {
+    if (!SRC[k] || !SRC[k].TABLE_ID || !SRC[k].VIEW_ID) {
+      console.warn(`[dropdowns] Missing source for ${k}. Check app-config.js.`);
+      return;
+    }
+  }
+
+  // generic fetch for one source table → array of labels
+  async function fetchLabelsFromSource(key) {
+    const src = SRC[key];
+    const labels = [];
+    let url = svc.otherListUrl(src.TABLE_ID, src.VIEW_ID);
+    for (;;) {
+      const res = await fetch(url, { headers: svc.headers() });
+      if (!res.ok) throw new Error(`[${key}] ${src.TABLE_ID} failed: ${res.status} ${await res.text()}`);
+      const j = await res.json();
+      for (const r of (j.records || [])) {
+        const label = pickLabel(r.fields || {}, src.LABEL_CANDIDATES || []);
+        if (label) labels.push(label);
+      }
+      if (!j.offset) break;
+      url = svc.otherListUrl(src.TABLE_ID, src.VIEW_ID, j.offset);
+    }
+    // unique + sort
+    return Array.from(new Set(labels)).sort(byAlpha);
+  }
+
+  // fetch three lists in parallel (tiny payloads, very fast)
+  const [branches, managers, customers] = await Promise.all([
+    fetchLabelsFromSource("BRANCH"),
+    fetchLabelsFromSource("FIELD_MANAGER"),
+    fetchLabelsFromSource("CUSTOMER"),
+  ]);
+
+  // push into your selects (adjust IDs if needed)
+  fill(document.getElementById("branchSelect"),       branches);
+  fill(document.getElementById("fieldManagerSelect"), managers);
+  fill(document.getElementById("customerSelect"),     customers);
+
+  console.info("[dropdowns] populated from linked tables", {
+    branches: branches.length, managers: managers.length, customers: customers.length
+  });
+}
+
+// ========= Call it once after runtime is applied =========
+document.addEventListener("DOMContentLoaded", () => {
+  if (window.APP?.airtable && typeof setAirtableRuntimeConfig === "function") {
+    setAirtableRuntimeConfig(window.APP.airtable); // make sure Fill-In is active
+  }
+  window.__AT_CORE_DROPDOWNS__ ||= populateDropdownsFromLinkedTables();
+});
 
   // Scrape visible cart table in case localStorage cart items don't have vendor/fields
   function scrapeCartFromDOM(){
@@ -141,84 +241,6 @@
     return lines.join("\n");
   }
 
- (async function initDropdowns(){
-  try {
-    const svc = new AirtableService();
-    const APP_MODE = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
-
-    const customerSel = document.getElementById("customerSelect");
-    const branchSel   = document.getElementById("branchSelect");
-    const fmSel       = document.getElementById("fieldManagerSelect");
-
-    if (APP_MODE === "vpo") {
-      // --- VPO path: curated SOURCES ---
-      const { options: customerOpts } = await svc.fetchCustomerOptions();
-      if (customerSel) {
-        customerOpts.forEach(opt => {
-          const o = document.createElement("option");
-          o.value = opt.id;
-          o.textContent = opt.label;
-          customerSel.appendChild(o);
-        });
-      }
-
-      const { options: branchOpts } = await svc.fetchBranchOptions();
-      if (branchSel) {
-        branchOpts.forEach(opt => {
-          const o = document.createElement("option");
-          o.value = opt.id;
-          o.textContent = opt.label;
-          branchSel.appendChild(o);
-        });
-      }
-
-      const { options: fmOpts } = await svc.fetchFieldManagerOptions();
-      if (fmSel) {
-        fmOpts.forEach(opt => {
-          const o = document.createElement("option");
-          o.value = opt.id;
-          o.textContent = opt.label;
-          fmSel.appendChild(o);
-        });
-      }
-    } else {
-      // --- Fill-In path: scan main table values ---
-      const dd = await svc.fetchDropdowns({
-        branchField: "Branch",              // adjust to real column name in Fill-In table
-        fieldMgrField: "Field Manager",     // adjust if needed
-        neededByField: "Needed By",
-        reasonField: "Reason For Fill In",
-      });
-
-      if (branchSel) {
-        dd.branch.forEach(lbl => {
-          const o = document.createElement("option");
-          o.value = lbl; o.textContent = lbl;
-          branchSel.appendChild(o);
-        });
-      }
-
-      if (fmSel) {
-        dd.fieldManager.forEach(lbl => {
-          const o = document.createElement("option");
-          o.value = lbl; o.textContent = lbl;
-          fmSel.appendChild(o);
-        });
-      }
-
-      if (customerSel) {
-        // optional: Fill-In may not have customers; if you do, pick correct field
-        dd.customer?.forEach(lbl => {
-          const o = document.createElement("option");
-          o.value = lbl; o.textContent = lbl;
-          customerSel.appendChild(o);
-        });
-      }
-    }
-  } catch (e) {
-    console.warn("[initDropdowns] failed", e);
-  }
-})();
 
 // Refresh subcontractor list whenever Branch changes
 document.getElementById("branchSelect")?.addEventListener("change", loadSubcontractorsForSelectedBranch);
@@ -252,7 +274,6 @@ async function loadSubcontractorsForSelectedBranch(ev) {
       // FILL-IN path: avoid curated SOURCES (they belong to VPO base and 403).
       // 1) Try to derive from the Fill-In main table by scanning records.
       //    Adjust the field names below if your Fill-In columns differ.
-      const recs = await svc.fetchAllRecords();
       const set = new Set();
 
       for (const r of recs) {

@@ -217,42 +217,7 @@ timeEnd(label) {
       } finally { AIRTABLE_LOGGER.groupEnd(); }
     }
 
-    // ---- main table ops ----
-   async fetchAllRecords(signal) {
-  // Unique run id for this pagination (prevents label collisions across overlapping calls)
-  const rid = Math.random().toString(36).slice(2, 8);
-
-  AIRTABLE_LOGGER.group("fetchAllRecords", `pagination begin [${rid}]`);
-
-  let url = this.listUrl();
-  const out = [];
-  let page = 0;
-
-  while (url) {
-    page++;
-    const tag = `fetchAll[${rid}] page ${page}`;
-
-    AIRTABLE_LOGGER.time(tag);
-    const res = await this._fetch(url, { headers: this.headers(), signal }, "list");
-    if (!res.ok) {
-      AIRTABLE_LOGGER.timeEnd(tag);
-      throw new Error(`List failed: ${res.status} ${await res.text()}`);
-    }
-
-    const j   = await res.json();
-    const len = (j.records || []).length;
-
-    out.push(...(j.records || []));
-    url = j.offset ? this.listUrl(j.offset) : null;
-
-    AIRTABLE_LOGGER.timeEnd(tag);
-    AIRTABLE_LOGGER.info("list", `page ${page} records [${rid}]`, len);
-  }
-
-  AIRTABLE_LOGGER.info("fetchAllRecords", `total [${rid}]`, out.length);
-  AIRTABLE_LOGGER.groupEnd();
-  return out;
-}
+ 
 
 
     /** Legacy helper to scan current view for distinct values. */

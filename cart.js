@@ -1010,8 +1010,6 @@ function normalizeSaved(state) {
   return s;
 }
 
-
-
 document.addEventListener("DOMContentLoaded", async () => {
   // 0) Ensure a default margin exists *before* any reads/renders
   if (!localStorage.getItem("vanir_global_margin_pct")) {
