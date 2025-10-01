@@ -176,10 +176,12 @@ timeEnd(label) {
 
     // ---- URLs for main table ----
     listUrl(offset) {
-      const base = `https://api.airtable.com/v0/${this.baseId}/${this.tableId}?view=${encodeURIComponent(this.viewId)}`;
-      const url = offset ? `${base}&offset=${encodeURIComponent(offset)}` : base;
-      AIRTABLE_LOGGER.debug("listUrl", url); return url;
-    }
+  const base =
+    `https://api.airtable.com/v0/${this.baseId}/${this.tableId}` +
+    `?view=${encodeURIComponent(this.viewId)}` +
+    `&cellFormat=string&timeZone=America/New_York&userLocale=en-us`;
+  return offset ? `${base}&offset=${encodeURIComponent(offset)}` : base;
+}
     tableUrl(id) {
       const base = `https://api.airtable.com/v0/${this.baseId}/${this.tableId}`;
       const url = id ? `${base}/${id}` : base;
@@ -187,10 +189,13 @@ timeEnd(label) {
     }
 
     // ---- URLs for arbitrary source tables ----
-    otherListUrl(tableId, viewId, offset) {
-      const base = `https://api.airtable.com/v0/${this.baseId}/${tableId}?view=${encodeURIComponent(viewId)}`;
-      return offset ? `${base}&offset=${encodeURIComponent(offset)}` : base;
-    }
+  otherListUrl(tableId, viewId, offset) {
+  const base =
+    `https://api.airtable.com/v0/${this.baseId}/${tableId}` +
+    `?view=${encodeURIComponent(viewId)}` +
+    `&cellFormat=string&timeZone=America/New_York&userLocale=en-us`;
+  return offset ? `${base}&offset=${encodeURIComponent(offset)}` : base;
+}
     otherTableUrl(tableId, id) {
       const base = `https://api.airtable.com/v0/${this.baseId}/${tableId}`;
       return id ? `${base}/${id}` : base;
