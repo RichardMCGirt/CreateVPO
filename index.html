@@ -112,9 +112,9 @@
              inputmode="numeric"
              pattern="[0-9]*"
              aria-label="Quantity"
-             placeholder="Qty"
-             value="0"
-             minlength="1"
+             placeholder="0"
+             value=""
+             minlength="0"
              class="ds-qty">
       <button id="ds-add" type="submit" class="btn ds-add">Add</button>
     </form>
@@ -124,12 +124,11 @@
 <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
 
 <script src="database.js"></script>
-<link rel="stylesheet" href="theme.pro.css"> <!-- after -->
+<link rel="stylesheet" href="theme.pro.css"> 
 
 <script src="app-ui-gates.js"></script>
 
 <script>
-  // Only boot Google if we are NOT skipping (e.g., not a mode-toggle reload with cache)
   function __bootGoogleIfNeeded() {
     try {
       if (window.__SKIP_BOOTSTRAP) {
@@ -137,7 +136,7 @@
         return;
       }
       if (typeof gapiLoaded === "function") {
-        gapiLoaded(); // your existing function in database.js
+        gapiLoaded(); 
       }
     } catch (e) {
       console.warn("[gapi] boot guard failed", e);
@@ -145,7 +144,6 @@
   }
 </script>
 
-<!-- Google JS (note: onload just signals; our guard decides to boot or skip) -->
 <script src="https://apis.google.com/js/api.js" async defer onload="__bootGoogleIfNeeded()"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
@@ -239,7 +237,7 @@
     try {
       const svc = new AirtableService();
       await initDropdowns(svc);     // see section 2; returns early on cache
-    } catch (e) { console.warn("initDropdowns failed:", e); }
+    } catch (e) {  }
 
     reflect(next);
   }
@@ -300,31 +298,32 @@
   });
 
   // Badge: sum of quantities in localStorage cart
-  function updateCartFabBadge(){
-    try {
-      var key = (typeof window.STORAGE_KEY === "string" && window.STORAGE_KEY) || "vanir_cart_v1";
-      var saved = JSON.parse(localStorage.getItem(key) || "{}");
+function updateCartFabBadge(){
+  try {
+    var key   = (typeof window.STORAGE_KEY === "string" && window.STORAGE_KEY) || "vanir_cart_v1";
+    var saved = JSON.parse(localStorage.getItem(key) || "{}");
 
-      // support both shapes: { items:[{qty}] } or { products:[{qty}] }
-      var rows = Array.isArray(saved.items) ? saved.items
-               : Array.isArray(saved.products) ? saved.products
-               : [];
+    // NEW: prefer saved.cart (current app shape). Fallback to legacy shapes.
+    var rows = Array.isArray(saved.cart)     ? saved.cart
+             : Array.isArray(saved.items)    ? saved.items
+             : Array.isArray(saved.products) ? saved.products
+             : [];
 
-      var count = 0;
-      for (var i = 0; i < rows.length; i++) {
-        var q = Number(rows[i]?.qty ?? rows[i]?.quantity ?? 0);
-        if (!Number.isNaN(q)) count += q;
-      }
-
-      if (badge) {
-        badge.textContent = String(count);
-        badge.style.display = count > 0 ? "" : "none";
-      }
-    } catch (e) {
-      // hide badge on error
-      if (badge) badge.style.display = "none";
+    var count = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var q = Number(rows[i]?.qty ?? rows[i]?.quantity ?? 0);
+      if (!Number.isNaN(q)) count += q;
     }
+
+    if (badge) {
+      badge.textContent = String(count);
+      badge.style.display = count > 0 ? "" : "none";
+    }
+  } catch (e) {
+    if (badge) badge.style.display = "none";
   }
+}
+
 
   // expose for other code to call after cart changes
   window.updateCartFabBadge = updateCartFabBadge;
@@ -434,11 +433,8 @@
       });
     }
     const _reload = location.reload;
-    location.reload = function(){
-      console.trace("[NAV]", "location.reload()");
-      // Comment-out the next line to *block* reload during debugging:
-      return _reload.apply(this, arguments);
-    };
+   
+
   })();
 
 

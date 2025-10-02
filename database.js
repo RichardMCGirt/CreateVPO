@@ -4,6 +4,7 @@ const API_KEY   = "AIzaSyBGYsHkTEvE9eSYo9mFCUIecMcQtT8f0hg";
 const SHEET_ID  = "1E3sRhqKfzxwuN6VOmjI2vjWsk_1QALEKkX7mNXzlVH8";
 const SCOPES    = "https://www.googleapis.com/auth/spreadsheets.readonly";
 const RL_MAX_PER_MIN = 30;  
+
 const CACHE_FIRST_MODE = true;
 const CACHE_STALE_HINT_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const RL_INTERVAL_MS = 60_000;  
@@ -41,6 +42,9 @@ const PRODUCT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PRODUCT_CACHE_KEY = "vanir_products_cache_v2"; 
 const PRODUCT_CACHE_SS_KEY = "vanir_products_cache_v2_ss";
 let __filterTimer = null;
+
+
+
 function updateTableVisibility() {
   const show = hasAnyActiveFilter(); // true if search OR a dropdown has a value
   const vp = document.getElementById("table-viewport");   // virtualized grid
@@ -600,30 +604,48 @@ function __virtMeasureRowHeight() {
   if (h > VIRT_ROW_HEIGHT) VIRT_ROW_HEIGHT = h;
 }
 
-
 function __virtRowHTML(r, idx, topPx) {
-  const key = `${String(r.sku||"")}|${String(r.vendor||"")}|${String(r.uom||"")}`;
+  // Build the stable cart key for this row
+  const key = `${String(r.sku || "")}|${String(r.vendor || "")}|${String(r.uom || "")}`;
+
+  // Look up any existing qty in the cart
+  const item  = (typeof CART?.get === "function") ? CART.get(key) : null;
+  const q     = Number(item?.qty);
+  const hasQ  = Number.isFinite(q) && q > 0;
+
+  // ✅ Define qtyAttr so the placeholder shows when there is no value
+  const qtyAttr = hasQ ? `value="${q}"` : `value="" placeholder="0"`;
+
+  // Render the virtual row
   return `
     <div class="vrow js-open-desc" role="button" tabindex="0"
          style="top:${topPx}px"
          data-key="${escapeHtml(key)}"
          data-idx="${idx}">
-      <div class="cell-vendor">${escapeHtml(r.vendor||"")}</div>
-      <div class="cell-sku">${escapeHtml(r.sku||"")}</div>
-      <div class="cell-uom">${escapeHtml(r.uom||"")}</div>
-      <div class="cell-desc">${escapeHtml(r.description||"")}</div>
-      <div class="cell-helper">${escapeHtml(r.skuHelper||"")}</div>
+      <div class="cell-vendor">${escapeHtml(r.vendor || "")}</div>
+      <div class="cell-sku">${escapeHtml(r.sku || "")}</div>
+      <div class="cell-uom">${escapeHtml(r.uom || "")}</div>
+      <div class="cell-desc">${escapeHtml(r.description || "")}</div>
+      <div class="cell-helper">${escapeHtml(r.skuHelper || "")}</div>
       <div class="cell-cost">${escapeHtml(formatMoney(r.cost))}</div>
       <div class="cell-price">${escapeHtml(formatMoney(unitBase(r)))}</div>
       <div class="vactions">
-        <input aria-label="Quantity" type="number" class="qty-input" min="1" step="1" value="1"
-               id="qty_${idx}" data-idx="${idx}" style="width:70px;padding:4px 6px;">
-        <button class="btn add-to-cart" data-key="${escapeHtml(key)}" data-idx="${idx}">Add</button>
+        <input aria-label="Quantity"
+               type="number"
+               class="qty-input"
+               min="0"
+               step="1"
+               ${qtyAttr}
+               id="qty_${idx}"
+               data-idx="${idx}"
+               style="width:70px;padding:4px 6px;">
+        <button class="btn add-to-cart"
+                data-key="${escapeHtml(key)}"
+                data-idx="${idx}">Add</button>
       </div>
     </div>
   `;
 }
-
 
 function addToCartFromRow(row, key, rawQty, opts = {}) {
   // opts.mode: "set" (default) or "add"
@@ -1661,69 +1683,20 @@ async function getSheetTitleByGid(spreadsheetId, gidNumber) {
   }
 }
 
-function __virtRowHTML(r, idx, topPx) {
-  const key = `${String(r.sku||"")}|${String(r.vendor||"")}|${String(r.uom||"")}`;
-  return `
-    <div class="vrow" style="top:${topPx}px" data-key="${escapeHtml(key)}" data-idx="${idx}">
-      <div class="cell-vendor">${escapeHtml(r.vendor||"")}</div>
-      <div class="cell-sku" data-idx="${idx}" role="button" tabindex="0" aria-label="Show details for ${escapeHtml(r.sku||"")}">
-        ${escapeHtml(r.sku||"")}
-      </div>
-      <div class="cell-uom">${escapeHtml(r.uom||"")}</div>
-      <div class="cell-desc">${escapeHtml(r.description||"")}</div>
-      <div class="cell-helper">${escapeHtml(r.skuHelper||"")}</div>
-      <div class="cell-cost">${escapeHtml(formatMoney(r.cost))}</div>
-      <div class="cell-price">${escapeHtml(formatMoney(unitBase(r)))}</div>
-      <div class="vactions">
-<input aria-label="Quantity"
-       type="text"
-       inputmode="numeric"
-       pattern="[0-9]*"
-       class="qty-input"
-       min="0"
-       step="1"
-       value="0"
-       data-idx="${idx}"
-       autocomplete="off"
-       style="width:70px;padding:4px 6px;">
-        <button class="btn add-to-cart" data-key="${escapeHtml(key)}" data-idx="${idx}">Add</button>
-      </div>
-    </div>
-  `;
-}
+
 
 // Keep last row reference so the sheet can add to cart
 let __dsLastRow = null;
 let __dsLastKey = "";
 
+
 function showDescSheetForRow(row){
   __dsLastRow = row || null;
   const $ = (id) => document.getElementById(id);
-
-  document.getElementById("ds-title").textContent   = String(row?.sku || "—");
-  $("ds-sku").textContent     = String(row?.sku || "—");
-  $("ds-vendor").textContent  = String(row?.vendor || "—");
-  $("ds-uom").textContent     = String(row?.uom || "—");
-  $("ds-helper").textContent  = String(row?.skuHelper || "—");
-  try {
-    $("ds-price").textContent = formatMoney(unitBase(row));
-  } catch { $("ds-price").textContent = "—"; }
-  $("ds-desc").textContent    = String(row?.description || "—");
-
-  // compute item key (same as row add)
-  __dsLastKey = `${String(row?.sku||"")}|${String(row?.vendor||"")}|${String(row?.uom||"")}`;
-
-  const sheet = document.getElementById("desc-sheet");
-  sheet.hidden = false;
-
-  // reset & focus qty
-  const qty = document.getElementById("ds-qty");
-  qty.value = "0";
-  setTimeout(() => { try { qty.focus(); qty.select(); } catch {} }, 0);
-}
-function showDescSheetForRow(row){
-  __dsLastRow = row || null;
-  const $ = (id) => document.getElementById(id);
+// database.js (inside showDescSheetForRow)
+const qty = document.getElementById("ds-qty");
+qty.value = "";          // was "0"
+qty.placeholder = "0";   // optional, if you want the 0 look
 
   document.getElementById("ds-title").textContent = String(row?.sku || "—");
   $("ds-sku").textContent    = String(row?.sku || "—");
@@ -1742,7 +1715,6 @@ function showDescSheetForRow(row){
   // prevent background scroll while open
   try { document.body.classList.add("no-scroll"); } catch {}
 
-  const qty = document.getElementById("ds-qty");
   qty.value = "0";
   setTimeout(() => { try { qty.focus(); qty.select(); } catch {} }, 0);
 }
@@ -1763,6 +1735,13 @@ function showDescSheetForRow(row){
 function hideDescSheet(){
   const sheet = document.getElementById("desc-sheet");
   if (sheet) sheet.hidden = true;
+  // (inside hideDescSheet)
+const idx = window.FILTERED_ROWS?.indexOf(__dsLastRow);
+if (idx >= 0) {
+  const rowEl = document.querySelector(`.vrow[data-idx="${idx}"]`);
+  const qtyEl = rowEl ? rowEl.querySelector('.qty-input') : null;
+  if (qtyEl) { qtyEl.focus(); qtyEl.select(); }
+}
 
   // After closing, focus the inline qty of the same row (nice for power users)
   if (__dsLastRow) {
@@ -1772,6 +1751,7 @@ function hideDescSheet(){
         const rowEl = document.querySelector(`.vrow[data-idx="${idx}"]`);
         const qtyEl = rowEl ? rowEl.querySelector('.qty-input') : null;
         if (qtyEl) { qtyEl.focus(); qtyEl.select(); }
+        
       }
     } catch {}
   }
@@ -1794,6 +1774,7 @@ function __parseQty(val){
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
+// database.js
 function wireDescriptionSheet() {
   document.getElementById("ds-close")?.addEventListener("click", hideDescSheet);
   document.getElementById("desc-sheet")?.addEventListener("click", (ev) => {
@@ -1819,15 +1800,13 @@ function wireDescriptionSheet() {
       return;
     }
 
-    // ✅ Replace (not add)
+    // ✅ Replace quantity for the keyed SKU/Vendor/UOM
     addToCartFromRow(__dsLastRow, __dsLastKey, qty, { mode: "set" });
 
-    // ✅ Mirror into the visible table row input if we can find it
+    // ✅ Mirror into the visible table input so user sees it immediately
     try {
-      // locate the row by its data-key (same triple used to build keys)
-      const tr = document.querySelector(`#table-viewport [data-key="${CSS.escape(__dsLastKey)}"]`);
+      const tr  = document.querySelector(`#table-viewport [data-key="${CSS.escape(__dsLastKey)}"]`);
       if (tr) {
-        // Get idx from the button on that row to compute the input id
         const btn  = tr.querySelector('.add-to-cart');
         const idx  = Number(btn?.getAttribute('data-idx'));
         const inp  = document.getElementById(`qty_${idx}`);
@@ -1839,14 +1818,9 @@ function wireDescriptionSheet() {
 
     // Keep badges in sync
     updateCartBadge?.();
-    if (typeof window.updateCartFabBadge === "function") {
-      try { window.updateCartFabBadge(); } catch {}
-    }
+    window.updateCartFabBadge?.();
   });
 }
-
-
-
 
 async function fetchProductSheet(spreadsheetId, gidNumber = null) {
   let title = null;
@@ -2029,7 +2003,9 @@ const key = `${r.sku}|${r.vendor}|${r.uom || ''}`;
         <td data-label="SKU">${escapeHtml(r.sku)}</td>
         <td data-label="UOM">${escapeHtml(r.uom)}</td>
         <td data-label="Description">${escapeHtml(r.description)}</td>
-        <td data-label="Qty"><input aria-label="Quantity" type="number" class="qty-input" min="1" step="1" value="0" id="qty_${idx}"></td>
+        <td data-label="Qty"><input aria-label="Quantity" type="number" class="qty-input"
+       min="0" step="1" value="" placeholder="0" id="qty_${i}">
+</td>
         <td data-label="" class="row-actions">
           <button class="btn add-to-cart" data-key="${escapeHtml(key)}" data-idx="${idx}">Add</button>
         </td>
@@ -2441,7 +2417,9 @@ function renderTableAll(rows) {
           <td data-label="SKU">${escapeHtml(r.sku)}</td>
           <td data-label="UOM">${escapeHtml(r.uom)}</td>
           <td data-label="Description">${escapeHtml(r.description)}</td>
-          <td data-label="Qty"><input aria-label="Quantity" type="number" class="qty-input" min="1" step="1" value="0" id="qty_${i}"></td>
+          <td data-label="Qty"><input aria-label="Quantity" type="number" class="qty-input"
+       min="0" step="1" value="" placeholder="0" id="qty_${i}">
+</td>
           <td data-label="" class="row-actions">
             <button class="btn add-to-cart" data-key="${escapeHtml(r.sku)}|${escapeHtml(r.vendor)}|${escapeHtml(r.uom || "")}" data-idx="${i}">Add</button>
           </td>
@@ -2473,7 +2451,9 @@ function addToCart(row, qty) {
   showToast?.(`Added ${qty} ${row?.sku || "item"} to cart`);
   showEl?.("cart-section", true);
   updateCartBadge?.();
+  window.updateCartFabBadge?.();   // ← add this if you want the FAB count instantly updated here too
 }
+
 
 
 
@@ -2494,7 +2474,7 @@ function updateCartQty(key, qty) {
   const item = CART.get(key);
   if (!item) return;
 
-  item.qty = Math.max(1, Math.floor(qty || 1));
+item.qty = Math.max(0, Math.floor(Number(qtyEl.value) || 0));
   renderCart();
   persistState();
   broadcastCartState();
@@ -2597,11 +2577,12 @@ function renderCart() {
       const key = qtyEl.getAttribute("data-key");
       const item = CART.get(key);
       if (!item) return;
-      item.qty = Math.max(0, Math.floor(Number(qtyEl.value) || 0));
+item.qty = Math.max(0, Math.floor(Number(qtyEl.value) || 0));
       updateTotalsCellsForRow(qtyEl.closest("tr"), item);
       updateTotalsOnly();
       persistState();
       updateCartBadge();
+      window.updateCartFabBadge?.();
       return;
     }
     const pctEl = ev.target.closest(".cart-margin-pct");
@@ -3019,7 +3000,6 @@ function renderTableAppendChunked(rows, startIdx = 0){
 }
 
 async function listSheetData(){
-  console.time("listSheetData");
   try {
     try { showLoadingBar?.(true, "Initializing…"); } catch {}
     try { bumpLoadingTo?.(8, "Loading Google API client…"); } catch {}
@@ -3425,7 +3405,9 @@ const key = `${r.sku}|${r.vendor}|${r.uom || ''}`;
       <td data-label="SKU">${escapeHtml(r.sku)}</td>
       <td data-label="UOM">${escapeHtml(r.uom || '')}</td>
       <td data-label="Description">${escapeHtml(r.description || '')}</td>
-      <td data-label="Qty"><input aria-label="Quantity" type="number" class="qty-input" min="0" step="1" value="0"></td>
+      <td data-label="Qty"><input aria-label="Quantity" type="number" class="qty-input"
+       min="0" step="1" value="" placeholder="0" id="qty_${i}">
+</td>
       <td data-label="" class="row-actions">
         <button class="btn add-to-cart">Add</button>
       </td>`;
