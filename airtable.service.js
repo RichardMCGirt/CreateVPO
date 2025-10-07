@@ -227,7 +227,6 @@ timeEnd(label) {
       neededByField = "Needed By",
       reasonField = "Reason For Fill In",
     } = {}) {
-      const recs = await this.fetchAllRecords();
       const setB = new Set(), setFM = new Set(), setN = new Set(), setR = new Set();
       for (const r of recs) {
         const f = r.fields || {};
@@ -287,7 +286,6 @@ timeEnd(label) {
       // Quick probe to fail fast with a good message
       await this._probeSource(tableId, viewId);
 
-      const recs = await this.fetchAllFromSource(tableId, viewId);
 
       const rawOptions = [];
       const idToLabel  = new Map();
