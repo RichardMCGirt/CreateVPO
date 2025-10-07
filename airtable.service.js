@@ -217,31 +217,37 @@ timeEnd(label) {
       } finally { AIRTABLE_LOGGER.groupEnd(); }
     }
 
- 
-
-
-    /** Legacy helper to scan current view for distinct values. */
-    async fetchDropdowns({
-      branchField = "Branch",
-      fieldMgrField = "Field Manager",
-      neededByField = "Needed By",
-      reasonField = "Reason For Fill In",
-    } = {}) {
-      const setB = new Set(), setFM = new Set(), setN = new Set(), setR = new Set();
-      for (const r of recs) {
-        const f = r.fields || {};
-        if (typeof f[branchField] === "string") setB.add(f[branchField]);
-        if (typeof f[fieldMgrField] === "string") setFM.add(f[fieldMgrField]);
-        if (f[neededByField]) setN.add(String(f[neededByField]));
-        if (f[reasonField]) setR.add(String(f[reasonField]));
-      }
-      return {
-        branch: Array.from(setB).sort(),
-        fieldManager: Array.from(setFM).sort(),
-        neededBy: Array.from(setN).sort(),
-        reason: Array.from(setR).sort(),
-      };
+async fetchDropdowns({
+  branchField   = "Branch",
+  fieldMgrField = "Field Manager",
+  neededByField = "Needed By",
+  reasonField   = "Reason For Fill In",
+} = {}) {
+  // Page through the CURRENT table/view
+  const setB = new Set(), setFM = new Set(), setN = new Set(), setR = new Set();
+  let url = this.listUrl();
+  for (;;) {
+    const res = await this._fetch(url, { headers: this.headers() }, "list");
+    if (!res.ok) throw new Error(`fetchDropdowns failed: ${res.status} ${await res.text?.()}`);
+    const j = await res.json();
+    for (const r of (j.records || [])) {
+      const f = r.fields || {};
+      if (typeof f[branchField]   === "string") setB.add(f[branchField]);
+      if (typeof f[fieldMgrField] === "string") setFM.add(f[fieldMgrField]);
+      if (f[neededByField] != null) setN.add(String(f[neededByField]));
+      if (f[reasonField]   != null) setR.add(String(f[reasonField]));
     }
+    if (!j.offset) break;
+    url = this.listUrl(j.offset);
+  }
+  return {
+    branch:       Array.from(setB).sort(),
+    fieldManager: Array.from(setFM).sort(),
+    neededBy:     Array.from(setN).sort(),
+    reason:       Array.from(setR).sort(),
+  };
+}
+
 
     // ---- source table ops (for linked fields) ----
     async fetchAllFromSource(tableId, viewId, signal) {
@@ -277,45 +283,47 @@ timeEnd(label) {
       return true;
     }
 
-    /** Returns { options:[{id,label}], idToLabel:Map, labelToId:Map } */
-    async fetchOptionsFromSource({ tableId, viewId, labelCandidates = [] } = {}) {
-      if (!tableId || !viewId) {
-        throw new Error(`fetchOptionsFromSource: missing tableId/viewId. ${_fmtSrc("args", this.baseId, tableId, viewId)}`);
-      }
+  /** Returns { options:[{id,label}], idToLabel:Map, labelToId:Map } */
+async fetchOptionsFromSource({ tableId, viewId, labelCandidates = [] } = {}) {
+  if (!tableId || !viewId) {
+    throw new Error(`fetchOptionsFromSource: missing tableId/viewId.`);
+  }
 
-      // Quick probe to fail fast with a good message
-      await this._probeSource(tableId, viewId);
+  // Fail fast if the table/view is bad
+  await this._probeSource(tableId, viewId);
 
+  const rawOptions = [];
+  const idToLabel  = new Map();
+  const labelToId  = new Map();
+  const normalize = (s) => String(s || "").replace(/\s+/g, " ").trim();
 
-      const rawOptions = [];
-      const idToLabel  = new Map();
-      const labelToId  = new Map();
-      const normalize = (s) => String(s || "").replace(/\s+/g, " ").trim();
+  // ✅ Actually fetch all records from the source view
+  const records = await this.fetchAllFromSource(tableId, viewId);
+  for (const r of records) {
+    const id    = r.id;
+    const label = normalize(AirtableService._pickLabel(r.fields || {}, labelCandidates));
+    if (!id || !label) continue;
+    rawOptions.push({ id, label });
+    idToLabel.set(id, label);
+    const key = label.toLocaleLowerCase();
+    if (!labelToId.has(key)) labelToId.set(key, id);
+  }
 
-      for (const r of recs) {
-        const id    = r.id;
-        const label = normalize(AirtableService._pickLabel(r.fields || {}, labelCandidates));
-        if (!id || !label) continue;
-        rawOptions.push({ id, label });
-        idToLabel.set(id, label);
-        const key = label.toLocaleLowerCase();
-        if (!labelToId.has(key)) labelToId.set(key, id);
-      }
+  rawOptions.sort((a,b) => a.label.localeCompare(b.label, undefined, { numeric:true, sensitivity:"base" }));
 
-      rawOptions.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }));
+  const seen = new Set();
+  const options = [];
+  for (const o of rawOptions) {
+    const key = o.label.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push(o);
+  }
 
-      const seen = new Set();
-      const options = [];
-      for (const o of rawOptions) {
-        const key = o.label.toLocaleLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        options.push(o);
-      }
+  AIRTABLE_LOGGER.info("src", `Fetched ${options.length} options [base=${this.baseId} table=${tableId} view=${viewId}]`);
+  return { options, idToLabel, labelToId };
+}
 
-      AIRTABLE_LOGGER.info("src", `Fetched ${options.length} options ${_fmtSrc("ok", this.baseId, tableId, viewId)}`);
-      return { options, idToLabel, labelToId };
-    }
 
     static _pickLabel(fields, candidates) {
       for (const key of candidates) {

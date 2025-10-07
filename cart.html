@@ -181,7 +181,7 @@
         <div class="label grand">Grand Total:</div><div class="value grand" id="grandTotal">$0.00</div>
       </div>
         <div class="right">
-        <span id="airtableStatus" class="pill" aria-live="polite" aria-atomic="true">Idle</span>
+        <span id="airtableStatus" class="pill" aria-live="polite" aria-atomic="true"></span>
         <button id="saveAirtable" class="btn primary">Save to Airtable</button>
       </div>
     </section>
@@ -214,7 +214,6 @@
       } catch(e){}
     }
 
-    // 2) Show/hide app-specific blocks
     function gateAppBlocks(){
       var appKey = (window.APP && window.APP.key) || "vpo";
       var onlyEls = document.querySelectorAll("[data-app-only]");
@@ -224,7 +223,6 @@
       });
     }
 
-    // 3) Labor visibility + totals row toggle
     function gateLabor(){
       var show = !!(window.APP && window.APP.includeLabor);
       var labor = document.getElementById("labor-list");
@@ -235,7 +233,6 @@
       if (laborVal) laborVal.style.display = show ? "" : "none";
     }
 
-    // 4) Fill-In select options helpers (Needed By / Reason)
     function setNeededByOptions(){
       var el = document.getElementById("neededBySelect");
       if (!el) return;
@@ -263,7 +260,6 @@
       ].forEach(function(v){ el.appendChild(new Option(v, v)); });
     }
 
-    // 5) Persist/restore branch + FM (optional; safe if not used)
     function initPersist(){
       var IDS = { branch: "branchSelect", fm: "fieldManagerSelect" };
       var KEYS = { branchId:"vanir_branch_id", branchLbl:"vanir_branch_label", fmId:"vanir_field_manager_id", fmLbl:"vanir_field_manager_label" };
@@ -357,18 +353,15 @@
     }
 
     function init(){
-      // Apply page mode
       applyTitles();
       gateAppBlocks();
       gateLabor();
 
-      // Populate Fill-In selects only if Fill-In is active
       if ((window.APP && window.APP.key) === "fillin") {
         setNeededByOptions();
         setReasonOptions();
       }
 
-      // Optional localStorage persistence
       initPersist();
     }
 
@@ -378,14 +371,10 @@
       init();
     }
   })();
-  </script>
 
-  <script>
-// Always include all lines of code
 (function () {
   "use strict";
 
-  // ---- IDs used in your page ----
   const BRANCH_SELECT_ID        = "branchSelect";
   const FIELD_MANAGER_SELECT_ID = "fieldManagerSelect";
 
@@ -403,14 +392,12 @@
       if (typeof val === "object" && val && "name" in val) return String(val.name);
       if (typeof val === "string" && val.trim()) return val.trim();
       if (Array.isArray(val) && val.length && typeof val[0] === "string") {
-        // if multi-select or array of strings, join first/primary
         return String(val[0]).trim();
       }
     }
     return String(fields?.Name || fields?.name || "").trim() || "";
   }
 
-  // Build <option> list for a <select>
   function populateSelect(select, options, { placeholder = "Select…" } = {}) {
     if (!select) return;
     const prev = select.value;
@@ -422,31 +409,26 @@
 
     for (const opt of options) {
       const o = document.createElement("option");
-      o.value = opt.id;             // record id
-      o.textContent = opt.label;    // human label
+      o.value = opt.id;             
+      o.textContent = opt.label;    
       select.appendChild(o);
     }
 
-    // Try to restore previous selection if still present
     if (prev && Array.from(select.options).some(o => o.value === prev)) {
       select.value = prev;
     } else {
-      select.value = ""; // default to placeholder
+      select.value = ""; 
     }
-    // Fire change for downstream listeners if needed
     try { select.dispatchEvent(new Event("change", { bubbles: true })); } catch {}
   }
 
-  // Fetch *all* Field Managers (once per call) and return raw records
   async function fetchAllManagers() {
     const svc = new AirtableService();
     const src = APP?.airtable?.SOURCES?.FIELD_MANAGER || {};
-    // Probe and fetch using curated source (view-aware)
     const recs = await svc.fetchAllFromSource(src.TABLE_ID, src.VIEW_ID);
     return recs || [];
   }
 
-  // Turn records into {id,label} using LABEL_CANDIDATES
   function mapManagersToOptions(records, labelCandidates) {
     const out = [];
     const seen = new Set();
@@ -457,27 +439,23 @@
       out.push({ id, label, fields: r?.fields || {} });
       seen.add(id);
     }
-    // sort by label (case-insensitive)
     out.sort((a,b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
     return out;
   }
 
-  // Filter by Vanir Office = selected branch label (string compare)
   function filterManagersByBranch(managerOptions, branchLabel) {
     const b = norm(branchLabel);
     if (!b) return managerOptions.slice(); // show all if branch empty
     return managerOptions.filter(m => norm(m.fields?.["Vanir Office"]) === b);
   }
 
-  // Main controller
   async function wireManagerFiltering() {
     const branchSel = document.getElementById(BRANCH_SELECT_ID);
     const mgrSel    = document.getElementById(FIELD_MANAGER_SELECT_ID);
-    if (!mgrSel) return; // nothing to do if manager select not on page
+    if (!mgrSel) return; 
 
     const labelCandidates = (APP && APP.airtable && APP.airtable.SOURCES && APP.airtable.SOURCES.FIELD_MANAGER && APP.airtable.SOURCES.FIELD_MANAGER.LABEL_CANDIDATES) || ["Full Name","Name","Field Manager","Field Manager Name","Title"];
 
-    // Load all managers once
     let allRecords;
     try {
       allRecords = await fetchAllManagers();
@@ -489,7 +467,6 @@
 
     const allOptions = mapManagersToOptions(allRecords, labelCandidates);
 
-    // Helper to (re)render managers based on current branch label
     function renderForCurrentBranch() {
       const branchLabel = (() => {
         if (!branchSel) return "";

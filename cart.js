@@ -111,14 +111,11 @@ function currentBranchLabel() {
   return id ? (maps.branch.idToLabel.get(id) || "") : "";
 }
 
-
-
 function atBaseId() {
   return (window.APP && window.APP.airtable && window.APP.airtable.BASE_ID) || "";
 }
 
-// FULL: initDropdowns (cache-first)
-// cart.js — FULL replacement for initDropdowns
+
 async function initDropdowns(service) {
   const at = service || new AirtableService();
 
@@ -136,93 +133,93 @@ async function initDropdowns(service) {
   const APP_MODE = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
   const BASE_ID  = (window.AIRTABLE_CONFIG && window.AIRTABLE_CONFIG.BASE_ID) || "";
 
-  // Try cache hydrate first (per base)
+  // Cache hydrate (unchanged) …
   try {
     if (window.ATOPTS && typeof ATOPTS.load === "function") {
       const cached = ATOPTS.load(BASE_ID);
       if (cached) {
-        if (Array.isArray(cached.branch)        && branchSel)        populateSelect(branchSel, cached.branch);
-        if (Array.isArray(cached.fieldManager)  && fieldMgrSel)      populateSelect(fieldMgrSel, cached.fieldManager);
-        if (Array.isArray(cached.customer)      && customerSel)      populateSelect(customerSel, cached.customer);
+        // If your cache only has labels, keep this for Fill-In "label mode"
+        if (Array.isArray(cached.branch)        && branchSel)        populateSelect(branchSel,        cached.branch);
+        if (Array.isArray(cached.fieldManager)  && fieldMgrSel)      populateSelect(fieldMgrSel,      cached.fieldManager);
+        if (Array.isArray(cached.customer)      && customerSel)      populateSelect(customerSel,      cached.customer);
         if (Array.isArray(cached.subcontractor) && subcontractorSel) populateSelect(subcontractorSel, cached.subcontractor);
-        if (Array.isArray(cached.neededBy)      && neededBySel)      populateSelect(neededBySel, cached.neededBy);
-        if (Array.isArray(cached.reason)        && reasonSel)        populateSelect(reasonSel, cached.reason);
+        if (Array.isArray(cached.neededBy)      && neededBySel)      populateSelect(neededBySel,      cached.neededBy);
+        if (Array.isArray(cached.reason)        && reasonSel)        populateSelect(reasonSel,        cached.reason);
       }
     }
   } catch (e) {
     console.warn("[initDropdowns] cache hydrate failed", e);
   }
 
-  // Helper to persist to cache per base after we load fresh values
+
   function saveOptsToCache(opts) {
-    try {
-      if (!window.ATOPTS || typeof ATOPTS.save !== "function") return;
-      ATOPTS.save(BASE_ID, opts || {});
-    } catch {}
+    try { if (window.ATOPTS?.save) ATOPTS.save(BASE_ID, opts || {}); } catch {}
   }
 
   // ---- Loaders --------------------------------------------------------------
 
-  async function loadFromCuratedSources() {
-    // VPO behavior (unchanged): use SOURCES tables
+    async function loadFromCuratedSources() {
+    // Fetch id+label pairs from source tables
     const [fm, br, cu] = await Promise.all([
-      at.fetchFieldManagerOptions(), // {options:[{id,label}]}
+      at.fetchFieldManagerOptions(), // => {options:[{id,label}], idToLabel, labelToId}
       at.fetchBranchOptions(),
       at.fetchCustomerOptions(),
     ]);
 
-    if (fieldMgrSel)      populateSelect(fieldMgrSel,      (fm.options || []).map(o => o.label));
-    if (branchSel)        populateSelect(branchSel,        (br.options || []).map(o => o.label));
-    if (customerSel)      populateSelect(customerSel,      (cu.options || []).map(o => o.label));
+    // Paint selects with value=ID, text=label
+    if (fieldMgrSel) populateSelectWithPairs(fieldMgrSel, (fm.options || []).map(o => ({ value: o.id, label: o.label })));
+    if (branchSel)   populateSelectWithPairs(branchSel,   (br.options || []).map(o => ({ value: o.id, label: o.label })));
+    if (customerSel) populateSelectWithPairs(customerSel, (cu.options || []).map(o => ({ value: o.id, label: o.label })));
 
-    // Subcontractor is filtered by branch selection; we wire a change handler below
-    // Needed By / Reason (if you use curated tables for them, add similar calls)
+    // Keep maps for later lookups
+    if (window.maps) {
+      window.maps.fieldMgr.idToLabel = fm.idToLabel;
+      window.maps.fieldMgr.labelToId = fm.labelToId;
+      window.maps.branch.idToLabel   = br.idToLabel;
+      window.maps.branch.labelToId   = br.labelToId;
+      // If you want a customer map too:
+      window.maps.customer = { idToLabel: cu.idToLabel, labelToId: cu.labelToId };
+    }
+
+    // Store labels in cache for quick paint (optional)
     saveOptsToCache({
-      branch:        (br.options || []).map(o => o.label),
-      fieldManager:  (fm.options || []).map(o => o.label),
-      customer:      (cu.options || []).map(o => o.label)
+      branch:       (br.options || []).map(o => o.label),
+      fieldManager: (fm.options || []).map(o => o.label),
+      customer:     (cu.options || []).map(o => o.label)
     });
   }
 
-  async function loadFromMainViewScan() {
-    // Fill-In safe path: scan distinct values from the **Fill-In main view**
-    // You can rename the field names below if your Fill-In column names differ.
+
+   async function loadFromMainViewScan() {
     const dd = await at.fetchDropdowns({
-      branchField:     "Branch",                // change if Fill-In uses "Vanir Office" etc.
-      fieldMgrField:   "Field Manager",         // change if needed
-      neededByField:   "Needed By",
-      reasonField:     "Reason For Fill In",
+      branchField:   "Branch",
+      fieldMgrField: "Field Manager",
+      neededByField: "Needed By",
+      reasonField:   "Reason For Fill In",
     });
 
-    if (branchSel)        populateSelect(branchSel,        dd.branch || []);
-    if (fieldMgrSel)      populateSelect(fieldMgrSel,      dd.fieldManager || []);
-    if (customerSel)      populateSelect(customerSel,      []);            // optional: Fill-In may not need customer
-    if (neededBySel)      populateSelect(neededBySel,      dd.neededBy || []);
-    if (reasonSel)        populateSelect(reasonSel,        dd.reason || []);
-
-    // Subcontractor: for Fill-In we can either leave blank until branch is chosen,
-    // or do an unfiltered scan of subcontractors if you have them as text in the main table.
-    // Here we leave it to be populated when a branch is selected (see handler below).
+    if (branchSel)   populateSelect(branchSel,   dd.branch || []);
+    if (fieldMgrSel) populateSelect(fieldMgrSel, dd.fieldManager || []);
+    if (customerSel) populateSelect(customerSel, []); 
+    if (neededBySel) populateSelect(neededBySel, dd.neededBy || []);
+    if (reasonSel)   populateSelect(reasonSel,   dd.reason || []);
 
     saveOptsToCache({
-      branch:        dd.branch || [],
-      fieldManager:  dd.fieldManager || [],
-      neededBy:      dd.neededBy || [],
-      reason:        dd.reason || []
+      branch:       dd.branch || [],
+      fieldManager: dd.fieldManager || [],
+      neededBy:     dd.neededBy || [],
+      reason:       dd.reason || []
     });
   }
 
-  // ---- Pick strategy by mode -----------------------------------------------
+  // Pick strategy by mode
   if (APP_MODE === "fillin") {
-    // Avoid curated source calls that 403 due to cross-base table IDs
-    await loadFromMainViewScan();
+    await loadFromMainViewScan();  
   } else {
-    // VPO: keep curated sources
-    await loadFromCuratedSources();
+    await loadFromCuratedSources(); 
   }
 
-  // ---- Subcontractor wire-up (works in both modes) -------------------------
-  // On branch selection, try to load subcontractors filtered by branch.
+
   async function loadSubcontractorsForSelectedBranch(ev) {
     try {
       const branchLabel = (branchSel && branchSel.value) ? branchSel.value.trim() : "";
@@ -233,24 +230,7 @@ async function initDropdowns(service) {
 
       let opts = [];
       if (APP_MODE === "fillin") {
-        // Fill-In: if your SUBCONTRACTOR source isn’t available in this base,
-        // fallback to using the main table if it has a text column for subs.
-        // Example (uncomment/adjust if you store subcontractor names in main table):
-        //
-        // const recs = await at.fetchAllRecords();
-        // const set = new Set();
-        // for (const r of recs) {
-        //   const f = r.fields || {};
-        //   if ((f["Branch"] || "") === branchLabel && typeof f["Subcontractor"] === "string") {
-        //     set.add(String(f["Subcontractor"]).trim());
-        //   }
-        // }
-        // opts = Array.from(set).sort();
-
-        // If you DO have a proper SUBCONTRACTOR source in Fill-In base later,
-        // just use the AirtableService filter helper:
-        // const pairs = await at.fetchSubcontractorOptionsFilteredByBranch(branchLabel);
-        // opts = (pairs || []).map(p => p.label);
+       
       } else {
         // VPO path (curated)
         const pairs = await at.fetchSubcontractorOptionsFilteredByBranch(branchLabel);
@@ -351,7 +331,7 @@ function setSaved(nextState) {
   };
   const logger = window.AIRTABLE_LOGGER || console;
 
-  function setStatus(text, tone = "idle") {
+  function setStatus(text, tone = "") {
     if (!els.status) return;
     els.status.textContent = text;
     els.status.setAttribute("data-tone", tone);

@@ -3,8 +3,13 @@
   // =========================
   const CUSTOMER_NAME_IS_PLAINTEXT = false; // true ONLY if "Customer Name" is plain text in Airtable
 
+
   // --- Utilities ---
   const REC_ID_RE = /^rec[a-zA-Z0-9]{14}$/;
+// Natural, case-insensitive A→Z sort for labels
+function byAlpha(a, b) {
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+}
 
   function fmtMoney(n){
     const num = Number(n || 0);
@@ -29,16 +34,51 @@
     }
   }
 // ========= Drop into patch.js =========
+// patch.js — replace your populateDropdownsFromLinkedTables with this
 async function populateDropdownsFromLinkedTables() {
   const svc = new AirtableService();
 
-  // helpers
-  const byAlpha = (a,b)=>a.localeCompare(b, undefined, {numeric:true, sensitivity:"base"});
-  function fill(sel, arr){
+  const branchSel   = document.getElementById("branchSelect");
+  const fmSel       = document.getElementById("fieldManagerSelect");
+  const customerSel = document.getElementById("customerSelect");
+
+  // fetch id+label pairs from curated sources (SOURCES config in airtable.service.js)
+  const [br, fm, cu] = await Promise.all([
+    svc.fetchBranchOptions(),          // -> {options:[{id,label}], idToLabel, labelToId}
+    svc.fetchFieldManagerOptions(),
+    svc.fetchCustomerOptions(),
+  ]);
+
+  // helper to paint with value=ID, text=label
+  function populateSelectWithPairs(sel, pairs){
     if (!sel) return;
     sel.innerHTML = "";
-    (arr||[]).forEach(v => { const o=document.createElement("option"); o.value=v; o.textContent=v; sel.appendChild(o); });
+    sel.appendChild(new Option("—", ""));
+    (pairs||[]).forEach(({id,label}) => {
+      const o = document.createElement("option");
+      o.value = id;               // IMPORTANT: rec… id
+      o.textContent = label;
+      o.setAttribute("data-recid", id);
+      sel.appendChild(o);
+    });
   }
+
+  populateSelectWithPairs(branchSel,   (br.options||[]));
+  populateSelectWithPairs(fmSel,       (fm.options||[]));
+  populateSelectWithPairs(customerSel, (cu.options||[]));
+
+  // keep maps around for any label→id fallbacks in save
+  window.maps = window.maps || { branch:{}, fieldMgr:{}, customer:{} };
+  window.maps.branch   = { idToLabel: br.idToLabel,   labelToId: br.labelToId };
+  window.maps.fieldMgr = { idToLabel: fm.idToLabel,   labelToId: fm.labelToId };
+  window.maps.customer = { idToLabel: cu.idToLabel,   labelToId: cu.labelToId };
+
+  console.info("[dropdowns] populated from linked tables (ID-valued)", {
+    branches: br.options?.length || 0,
+    managers: fm.options?.length || 0,
+    customers: cu.options?.length || 0
+  });
+
   function pickLabel(fields, candidates){
     for (const key of (candidates || [])) {
       const v = fields?.[key];
@@ -249,68 +289,49 @@ document.getElementById("branchSelect")?.addEventListener("change", loadSubcontr
 loadSubcontractorsForSelectedBranch();
 
 // patch.js — FULL replacement for loadSubcontractorsForSelectedBranch
+// patch.js — FULL replacement for loadSubcontractorsForSelectedBranch (VPO path; value=recID)
 async function loadSubcontractorsForSelectedBranch(ev) {
   try {
-    const svc = new AirtableService();
-    const APP_MODE = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
-    const branchSel = document.getElementById("branchSelect");
-    const subcontractorSel = document.getElementById("subcontractorCompanySelect");
+    const svc  = new AirtableService();
+    const app  = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
+    const bSel = document.getElementById("branchSelect");
+    const sSel = document.getElementById("subcontractorCompanySelect");
+    if (!bSel || !sSel) return;
 
-    // Guard DOM
-    if (!branchSel || !subcontractorSel) return;
+    // Clear first
+    while (sSel.firstChild) sSel.removeChild(sSel.firstChild);
+    sSel.appendChild(new Option("—", ""));
 
-    const branchLabel = String(branchSel.value || "").trim();
-    subcontractorSel.innerHTML = ""; // clear first
+    const branchId = (bSel.value || "").trim();
+    if (!branchId) return;
 
-    if (!branchLabel) return;
+    // Convert branch ID -> human label using cart.js maps (already maintained there)
+    const label = (window.maps && window.maps.branch && window.maps.branch.idToLabel)
+      ? (window.maps.branch.idToLabel.get(branchId) || "")
+      : "";
 
-    let labels = [];
-
-    if (APP_MODE === "vpo") {
-      // VPO path: use curated SUBCONTRACTOR source filtered by "Vanir Branch"
-      const pairs = await svc.fetchSubcontractorOptionsFilteredByBranch(branchLabel);
-      labels = (pairs || []).map(p => p.label);
-    } else {
-      // FILL-IN path: avoid curated SOURCES (they belong to VPO base and 403).
-      // 1) Try to derive from the Fill-In main table by scanning records.
-      //    Adjust the field names below if your Fill-In columns differ.
-      const set = new Set();
-
-      for (const r of recs) {
-        const f = r?.fields || {};
-        const branch = (typeof f["Branch"] === "string") ? f["Branch"].trim() : "";
-        // Support either a dedicated column like "Subcontractor" or any text you store:
-        const sub = (typeof f["Subcontractor"] === "string") ? f["Subcontractor"].trim() : "";
-        if (branch && sub && branch.toLowerCase() === branchLabel.toLowerCase()) {
-          set.add(sub);
-        }
+    // VPO mode: use curated SOURCE (value must be recID)
+    if (app === "vpo") {
+      const pairs = await svc.fetchSubcontractorOptionsFilteredByBranch(label);
+      for (const p of (pairs || [])) {
+        const o = document.createElement("option");
+        o.value = p.id;           // IMPORTANT: rec… id
+        o.textContent = p.label;
+        sSel.appendChild(o);
       }
-
-      labels = Array.from(set).sort((a,b) =>
-        a.localeCompare(b, undefined, { numeric:true, sensitivity:"base" })
-      );
-
-      // 2) If your Fill-In base *does* have a proper subcontractor source later,
-      //    swap this block to the curated call and remove the scan above:
-      // const pairs = await svc.fetchSubcontractorOptionsFilteredByBranch(branchLabel);
-      // labels = (pairs || []).map(p => p.label);
+      sSel.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
     }
 
-    // Paint options
-    for (const lbl of labels) {
-      const opt = document.createElement("option");
-      opt.value = lbl;
-      opt.textContent = lbl;
-      subcontractorSel.appendChild(opt);
-    }
-    // Fire change for any downstream logic
-    subcontractorSel.dispatchEvent(new Event("change", { bubbles: true }));
+    // Fill-In mode (no curated table): leave empty or implement a safe scanner later
+    // (We removed the old 'recs' scan because 'recs' doesn't exist here.)
   } catch (e) {
     console.warn("[subcontractor] load failed:", e);
-    const subcontractorSel = document.getElementById("subcontractorCompanySelect");
-    if (subcontractorSel) subcontractorSel.innerHTML = "";
+    const sSel = document.getElementById("subcontractorCompanySelect");
+    if (sSel) { sSel.innerHTML = ""; sSel.appendChild(new Option("—", "")); }
   }
 }
+
 
 window.REC_ID_RE = window.REC_ID_RE || /^rec[a-zA-Z0-9]{14}$/; // rec + 14 chars
 
@@ -386,9 +407,45 @@ function selectedOptionText(sel) {
       status.style.color = tone === "bad" ? "#991b1b" :
                            tone === "ok"  ? "#065f46" : "inherit";
     }
-const subSel = document.getElementById("subcontractorCompanySelect");
-if (subSel?.value && REC_ID_RE.test(subSel.value)) {
-  fields["Subcontractor"] = [subSel.value];
+
+
+// ===== handleSave.js =====
+window.REC_ID_RE = window.REC_ID_RE || /^rec[a-zA-Z0-9]{14}$/;
+
+function nonEmpty(s){ return !!(s && String(s).trim()); }
+
+function getSelectedLabel(sel){
+  if (!sel) return "";
+  const opt = sel.selectedOptions && sel.selectedOptions[0];
+  return (opt ? opt.textContent : sel.value || "").trim();
+}
+const branchRec = getSelectedRecordIdWithMap(document.getElementById("branchSelect"),   window.maps?.branch);
+const fmRec     = getSelectedRecordIdWithMap(document.getElementById("fieldManagerSelect"), window.maps?.fieldMgr);
+const custRec   = getSelectedRecordIdWithMap(document.getElementById("customerSelect"), window.maps?.customer);
+/** Uses value OR data-recid OR MAP(label) to resolve to a record id */
+function getSelectedRecordIdWithMap(sel, map){
+  
+  if (!sel) return "";
+  const val = (sel.value || "").trim();
+  if (window.REC_ID_RE.test(val)) return val;
+  const opt = sel.selectedOptions && sel.selectedOptions[0];
+  const dataId = (opt && opt.getAttribute("data-recid")) || "";
+  if (window.REC_ID_RE.test(dataId)) return dataId;
+  const label = (opt ? opt.textContent : val).trim().toLowerCase();
+  if (label && map && map.labelToId && map.labelToId.get) {
+    const found = map.labelToId.get(label);
+    if (window.REC_ID_RE.test(found)) return found;
+  }
+  return "";
+}
+
+
+function recIdArr(recId){ return window.REC_ID_RE.test(recId) ? [recId] : []; }
+
+function unmoney(s){
+  if (!s) return null;
+  const n = Number(String(s).replace(/[^0-9.-]/g,""));
+  return Number.isFinite(n) ? n : null;
 }
 
 async function handleSave(){
@@ -399,7 +456,6 @@ async function handleSave(){
     const fields = {};
     const suspicious = [];
 
-    // Grab elements once
     const customerSel   = document.getElementById("customerSelect");
     const branchSel     = document.getElementById("branchSelect");
     const fmSel         = document.getElementById("fieldManagerSelect");
@@ -412,7 +468,6 @@ async function handleSave(){
     const describeEl    = document.getElementById("pleaseDescribe");
     const descWorkEl    = document.getElementById("describeWorkInput");
 
-    // Disable button if present
     let btn;
     try {
       btn = document.activeElement && document.activeElement.tagName === "BUTTON"
@@ -421,64 +476,64 @@ async function handleSave(){
       if (btn) btn.disabled = true;
     } catch {}
 
-    // --- Customer Name (linked or plaintext based on your flag) ---
+    // ---- Customers (linked or plaintext) ----
     if (customerSel) {
-      const customerRec = getSelectedRecordId(customerSel);
-      const customerLbl = getSelectedLabel(customerSel);
+      const rec = window.resolveRecIdFromSelect
+        ? window.resolveRecIdFromSelect(customerSel, window.LINKED?.customersByName)
+        : getSelectedRecordIdWithMap(customerSel, window.LINKED?.customersByName);
+      const lbl = getSelectedLabel(customerSel);
+
       if (window.CUSTOMER_NAME_IS_PLAINTEXT) {
-        if (nonEmpty(customerLbl) && customerLbl !== "—") {
-          fields["Customer Name"] = customerLbl;
-        } else {
-          console.warn('Omitting "Customer Name": empty label');
-          suspicious.push('Customer Name (empty label)');
-        }
+        if (nonEmpty(lbl) && lbl !== "—") fields["Customer Name"] = lbl;
+        else suspicious.push("Customer Name (empty label)");
       } else {
-        if (customerRec) {
-          fields["Customer Name"] = recIdArr(customerRec);
-        } else {
-          console.warn('Omitting "Customer Name": no record id found', { value: customerSel.value, label: customerLbl });
-          suspicious.push('Customer Name (no record id; ensure option values or data-recid are rec ids)');
+        if (rec) fields["Customer Name"] = recIdArr(rec);
+        else {
+          console.warn('Omitting "Customer Name": no record id found ', { value: customerSel.value, label: lbl });
+          suspicious.push("Customer Name (no record id; ensure value or data-recid or map exists)");
         }
       }
     }
 
-    // --- Vanir Office (Branch; linked) ---
+    // ---- Vanir Office (Branch, linked) ----
     if (branchSel) {
-      const branchRec = getSelectedRecordId(branchSel);
-      const label = getSelectedLabel(branchSel);
-      if (branchRec) {
-        fields["Vanir Office"] = recIdArr(branchRec);
-      } else if (branchSel.value) {
-        console.warn('Omitting "Vanir Office": not a record id', { value: branchSel.value, label });
-        suspicious.push('Vanir Office (not a record id: ' + (branchSel.value||label) + ')');
+      const rec = window.resolveRecIdFromSelect
+        ? window.resolveRecIdFromSelect(branchSel, window.LINKED?.branchesByName)
+        : getSelectedRecordIdWithMap(branchSel, window.LINKED?.branchesByName);
+      const lbl = getSelectedLabel(branchSel);
+
+      if (rec) fields["Branch"] = recIdArr(rec);
+      else {
+        console.warn('Omitting "Vanir Office": not a record id ', { value: branchSel.value, label: lbl });
+        suspicious.push(`Vanir Office (not a record id: ${branchSel.value || lbl})`);
       }
     }
 
-    // --- Field Technician (linked) ---
+    // ---- Field Technician (linked) ----
     if (fmSel) {
-      const fmRec = getSelectedRecordId(fmSel);
-      const label = getSelectedLabel(fmSel);
-      if (fmRec) {
-        fields["Field Technician"] = recIdArr(fmRec);
-      } else if (nonEmpty(label) && label !== "—") {
-        // Since you said Field Technician is a LINKED FIELD, do NOT send plain text here.
-        console.warn('Omitting "Field Technician": label present but no rec id. Linked field requires array of rec ids.', { value: fmSel.value, label });
-        suspicious.push('Field Technician (missing rec id; linked field requires ARRAY of rec ids)');
+      const rec = window.resolveRecIdFromSelect
+        ? window.resolveRecIdFromSelect(fmSel, window.LINKED?.managersByName)
+        : getSelectedRecordIdWithMap(fmSel, window.LINKED?.managersByName);
+      const lbl = getSelectedLabel(fmSel);
+
+      if (rec) fields["Field Manager"] = recIdArr(rec);
+      else if (nonEmpty(lbl) && lbl !== "—") {
+        console.warn('Omitting "Field Technician": label present but no rec id. Linked field requires array of rec ids. ', { value: fmSel.value, label: lbl });
+        suspicious.push("Field Technician (missing rec id; linked field requires ARRAY of rec ids)");
       } else {
-        console.warn('Omitting "Field Technician": no valid selection');
-        suspicious.push('Field Technician (no selection)');
+        suspicious.push("Field Technician (no selection)");
       }
     }
 
-    // --- Needed By (text/select/date) ---
+    // ---- Needed By ----
     if (neededBySel && neededBySel.value) {
       fields["Needed By"] = neededBySel.value;
       if (!/^\d{4}-\d{2}-\d{2}/.test(neededBySel.value)) {
-        suspicious.push('Needed By (format may not match date field): ' + neededBySel.value);
+        suspicious.push("Needed By (format may not match date field): " + neededBySel.value);
       }
     }
 
-    // --- Free text fields (omit if empty) ---
+    // ---- Free text ----
     const jobName  = jobNameEl?.value || "";
     const planName = planNameEl?.value || "";
     const elev     = elevEl?.value || "";
@@ -486,42 +541,36 @@ async function handleSave(){
     if (nonEmpty(planName)) fields["Plan Name"]  = planName;
     if (nonEmpty(elev))     fields["Elevation"]  = elev;
 
-    // --- Reason for Fill-In (single select / text) ---
-    if (reasonSel && reasonSel.value) {
-      fields["Reason For Fill In"] = reasonSel.value;
-    }
+    if (reasonSel?.value) fields["Reason For Fill In"] = reasonSel.value;
 
-    // --- Please describe (long text) ---
-    const desc = (describeEl && describeEl.value || "").trim();
+    const desc = (describeEl?.value || "").trim();
     if (nonEmpty(desc)) fields["Please Describe"] = desc;
 
-    // --- Subcontractor (linked) ---
+    // ---- Subcontractor (linked; keep your older logic or add a map like above) ----
     if (subSel) {
-      const subRec = getSelectedRecordId(subSel);
-      const label = getSelectedLabel(subSel);
-      if (subRec) {
-        fields["Subcontractor"] = recIdArr(subRec);
-      } else if (subSel.value) {
-        console.warn('Omitting "Subcontractor": not a record id', { value: subSel.value, label });
-        suspicious.push('Subcontractor (not a record id: ' + (subSel.value||label) + ')');
+      const rec = window.resolveRecIdFromSelect
+        ? window.resolveRecIdFromSelect(subSel, window.LINKED?.subcontractorsByName /* if you build it */)
+        : getSelectedRecordIdWithMap(subSel, window.LINKED?.subcontractorsByName);
+      const lbl = getSelectedLabel(subSel);
+      if (rec) fields["Subcontractor"] = recIdArr(rec);
+      else if (subSel.value) {
+        console.warn('Omitting "Subcontractor": not a record id ', { value: subSel.value, label: lbl });
+        suspicious.push('Subcontractor (not a record id: ' + (subSel.value||lbl) + ')');
       }
     }
 
-    // --- Description of Work (free text) ---
-    const descWork = (descWorkEl && descWorkEl.value || "").trim();
+    const descWork = (descWorkEl?.value || "").trim();
     if (nonEmpty(descWork)) fields["Description of Work"] = descWork;
 
-    // --- Materials Needed (generated string) ---
     try {
       const materials = buildMaterialsNeededText();
       fields["Materials Needed"] = materials;
-      if (typeof materials !== "string") suspicious.push('Materials Needed (not a string)');
+      if (typeof materials !== "string") suspicious.push("Materials Needed (not a string)");
     } catch (e) {
       console.warn("[Save] buildMaterialsNeededText() threw:", e);
-      suspicious.push('Materials Needed (builder threw error; field omitted?)');
+      suspicious.push("Materials Needed (builder threw error)");
     }
 
-    // --- Labor Cost (number) ---
     if (window.APP?.includeLabor) {
       try {
         const laborTotalStr = document.getElementById("laborTotal")?.textContent?.trim() || "";
@@ -529,51 +578,46 @@ async function handleSave(){
         if (laborTotalVal != null && !Number.isNaN(Number(laborTotalVal))) {
           fields["Labor Cost"] = Number(laborTotalVal);
         } else {
-          suspicious.push('Labor Cost (could not parse number): ' + laborTotalStr);
+          suspicious.push("Labor Cost (could not parse): " + laborTotalStr);
         }
       } catch (e) {
-        console.warn('[Save] Could not parse "Labor Cost" from #laborTotal:', e);
-        suspicious.push('Labor Cost (parse error from #laborTotal)');
+        console.warn("[Save] Labor Cost parse error:", e);
+        suspicious.push("Labor Cost (parse error)");
       }
     }
 
-    // ---- Diagnostic: payload table ----
+    // Diagnostics
     try {
       const entries = Object.entries(fields).map(([k, v]) => ({
         field: k,
         type: Array.isArray(v) ? "array" : typeof v,
         length: Array.isArray(v) ? v.length : (typeof v === "string" ? v.length : ""),
-        preview: Array.isArray(v) ? v.join(",") : (String(v).length > 200 ? String(v).slice(0, 200) + "…" : String(v))
+        preview: Array.isArray(v) ? v.join(",") : (String(v).length > 200 ? String(v).slice(0,200) + "…" : String(v))
       }));
       console.table(entries);
-    } catch (e) {
-      console.warn("[Save] console.table failed:", e);
-    }
+    } catch {}
 
-    if (suspicious.length) {
-      console.warn("[Save] Suspicious payload notes:", suspicious);
-    }
+    if (suspicious.length) console.warn("[Save] Suspicious payload notes:", suspicious);
 
-    // ---- Final validation to catch the exact 422 cause BEFORE sending ----
+    // Preflight shape check for linked fields
     (function validateLinkedShapes(){
-      const linkedFields = ["Customer Name", "Vanir Office", "Field Technician", "Subcontractor"];
+      const linkedFields = ["Customer Name", "Branch", "Field Manager", "Subcontractor"];
       for (const lf of linkedFields) {
         if (lf in fields) {
           const v = fields[lf];
           if (!Array.isArray(v) || !v.length || !v.every(x => typeof x === "string" && window.REC_ID_RE.test(x))) {
-            console.error(`[Save] ${lf} must be an ARRAY of record IDs. Current value:`, v);
+            console.error(`[Save] ${lf} must be ARRAY of rec IDs. Current value:`, v);
             throw new Error(`${lf} invalid shape (must be ["recXXXXXXXXXXXXXX"])`);
           }
         }
       }
     })();
 
-    // ---- Save to Airtable ----
     setStatus && setStatus("Saving…");
     console.debug("[Save] createRecord payload:", fields);
     const rec = await svc.createRecord(fields, { typecast: true });
     setStatus && setStatus("Saved ✓", "ok");
-    console.log("[Save] Created record:", rec);
+    console.log("[Save] Created record: ", rec);
 
   } catch (e) {
     console.error("[Save] Save failed:", e && e.stack ? e.stack : e);
@@ -592,6 +636,7 @@ async function handleSave(){
     console.groupEnd();
   }
 }
+
 // ===== linked-population.js =====
 // Use this after you fetch the linked tables from Airtable.
 // It both populates <select> options (value=recId) and builds global label→recId maps.
@@ -603,6 +648,102 @@ window.LINKED = window.LINKED || {
 };
 
 window.REC_ID_RE = window.REC_ID_RE || /^rec[a-zA-Z0-9]{14}$/;
+function applyPairsToSelect(sel, pairs){
+  if (!sel || !Array.isArray(pairs)) return;
+  const curLabel = (sel.selectedOptions && sel.selectedOptions[0]?.textContent || sel.value || "").trim();
+
+  // clear
+  while (sel.firstChild) sel.removeChild(sel.firstChild);
+
+  // placeholder
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = "— Select —";
+  sel.appendChild(ph);
+
+  // add id-valued options
+  for (const { id, label } of pairs){
+    if (!id || !window.REC_ID_RE.test(id)) continue;
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = String(label || "").trim();
+    opt.setAttribute("data-recid", id);
+    sel.appendChild(opt);
+  }
+
+  // reselect by label if possible
+  if (curLabel) {
+    for (const o of sel.options) {
+      if ((o.textContent || "").trim() === curLabel) { o.selected = true; break; }
+    }
+  }
+}
+// rehydrate-linked-selects.js
+async function rehydrateLinkedSelects(){
+  const svc = new AirtableService();
+
+  const branchSel   = document.getElementById("branchSelect");
+  const fmSel       = document.getElementById("fieldManagerSelect");
+  const customerSel = document.getElementById("customerSelect");
+
+  // Only rehydrate if the select isn't already ID-valued
+  const needsIdify = (sel) => {
+    if (!sel) return false;
+    const o = sel.options && sel.options[1]; // first non-placeholder
+    return !!(o && !window.REC_ID_RE.test(o.value));
+  };
+
+  try {
+    // Fetch curated id+label from source tables
+    const fetches = [];
+    if (needsIdify(branchSel))   fetches.push(svc.fetchBranchOptions());
+    else                         fetches.push(Promise.resolve(null));
+
+    if (needsIdify(fmSel))       fetches.push(svc.fetchFieldManagerOptions());
+    else                         fetches.push(Promise.resolve(null));
+
+    if (needsIdify(customerSel)) fetches.push(svc.fetchCustomerOptions());
+    else                         fetches.push(Promise.resolve(null));
+
+    const [br, fm, cu] = await Promise.all(fetches);
+
+    if (br && branchSel)   applyPairsToSelect(branchSel,   (br.options || []).map(o => ({ id:o.id, label:o.label })));
+    if (fm && fmSel)       applyPairsToSelect(fmSel,       (fm.options || []).map(o => ({ id:o.id, label:o.label })));
+    if (cu && customerSel) applyPairsToSelect(customerSel, (cu.options || []).map(o => ({ id:o.id, label:o.label })));
+
+    // Optional: keep quick lookup maps for other code paths
+    window.maps = window.maps || { branch:{}, fieldMgr:{} , customer:{} };
+    if (br) window.maps.branch   = { idToLabel: br.idToLabel,   labelToId: br.labelToId };
+    if (fm) window.maps.fieldMgr = { idToLabel: fm.idToLabel,   labelToId: fm.labelToId };
+    if (cu) window.maps.customer = { idToLabel: cu.idToLabel,   labelToId: cu.labelToId };
+
+    console.info("[rehydrateLinkedSelects] Done.",
+      { rehydrated: { branch: !!br, fieldManager: !!fm, customer: !!cu } });
+
+  } catch (e) {
+    console.warn("[rehydrateLinkedSelects] failed – leaving labels as-is", e);
+  }
+}
+// save-guard.js
+async function handleSaveGuarded(saveFn){
+  // quick detector: are key selects ID-valued?
+  const branchSel = document.getElementById("branchSelect");
+  const fmSel     = document.getElementById("fieldManagerSelect");
+  const custSel   = document.getElementById("customerSelect");
+  const isIdVal = (sel) => {
+    const o = sel && sel.options && sel.options[1];
+    return !!(o && window.REC_ID_RE.test(o.value));
+  };
+
+  // if any are not ID-valued, try to rehydrate first
+  if (!isIdVal(branchSel) || !isIdVal(fmSel) || !isIdVal(custSel)) {
+    console.warn("[Save] Linked selects not ID-valued. Rehydrating before save…");
+    await rehydrateLinkedSelects();
+  }
+
+  // now call your real save
+  return saveFn();
+}
 
 function clearAndSetPlaceholder(sel, placeholder="— Select —"){
   while (sel.firstChild) sel.removeChild(sel.firstChild);
@@ -700,10 +841,6 @@ window.initCustomersSelect = initCustomersSelect;
 window.initBranchesSelect = initBranchesSelect;
 window.initManagersSelect = initManagersSelect;
 window.resolveRecIdFromSelect = resolveRecIdFromSelect;
-
-
-
-
 
     // Use { once:true } to avoid duplicate listeners; we reattach after each click.
     function attachOnce(){
