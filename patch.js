@@ -381,10 +381,10 @@ async function handleSave(){
       }
     } else {
       if (REC_ID_RE.test(val)) {
-        fields["Builder"] = [val]; // linked-record
+        fields["Customer Name"] = [val]; // linked-record
       } else if (nonEmpty(label) && label !== "—") {
         // Use this only if your Airtable "Builder" is a text field, otherwise omit
-        fields["Builder"] = label;
+        fields["Customer Name"] = label;
       } else {
         console.warn('Omitting "Builder": no valid customer selection.', { val, label });
       }

@@ -62,22 +62,30 @@ function broadcastCart(state) {
   }
 
   // ---------- Global material margin ----------
-  function getGlobalMarginPct() {
-    const raw = localStorage.getItem(GLOBAL_MARGIN_KEY);
-    const n = Number(raw);
-    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 30;
-  }
-  function setGlobalMarginPct(pct) {
-    const v = Math.max(0, Math.floor(Number(pct) || 0));
-    try { localStorage.setItem(GLOBAL_MARGIN_KEY, String(v)); } catch {}
-    const inp = $("#globalMarginPct");
-    if (inp && String(inp.value) !== String(v)) inp.value = String(v);
-  }
+// ---------- Global material margin ----------
+function getGlobalMarginPct() {
+  // Respect app mode: VPO gets a hard 0% margin.
+  const APP_MODE = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
+  if (APP_MODE === "vpo") return 0;
 
-  function itemUnitSell(item) {
-    const pct = getGlobalMarginPct(); // single global margin now
-    return (Number(item.unitBase) || 0) * (1 + pct / 100);
-  }
+  const raw = localStorage.getItem("vanir_global_margin_pct");
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 30;
+}
+
+function setGlobalMarginPct(pct) {
+  const v = Math.max(0, Math.floor(Number(pct) || 0));
+  try { localStorage.setItem("vanir_global_margin_pct", String(v)); } catch {}
+  const inp = document.querySelector("#globalMarginPct");
+  if (inp && String(inp.value) !== String(v)) inp.value = String(v);
+}
+
+// keep using getGlobalMarginPct() here — this will now be 0 in VPO
+function itemUnitSell(item) {
+  const pct = getGlobalMarginPct(); // single global margin now
+  return (Number(item.unitBase) || 0) * (1 + pct / 100);
+}
+
 
   // LocalStorage helpers
 function getSaved() {

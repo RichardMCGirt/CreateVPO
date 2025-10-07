@@ -37,7 +37,7 @@
     <section id="form-section" class="card" aria-labelledby="formTitle">
       <div id="airtableBanner">
         <strong>Missing Airtable API Key.</strong> In your browser console run:
-        <code>localStorage.setItem('AIRTABLE_API_KEY','YOUR_AIRTABLE_PAT_HERE')</code>
+        <code>localStorage.setItem('AIRTABLE_API_KEY','patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054')</code>
       </div>
 
       <header class="stack" style="margin-bottom: 8px;">
@@ -514,6 +514,29 @@
     document.addEventListener("DOMContentLoaded", wireManagerFiltering);
   } else {
     wireManagerFiltering();
+  }
+})();
+(function(){
+  "use strict";
+  var mode = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
+  var wrap = document.getElementById("globalMarginWrap");
+  var inp  = document.getElementById("globalMarginPct");
+
+  if (!wrap || !inp) return;
+
+  if (mode === "vpo") {
+    // Force 0% for UX consistency and disable the control
+    try { localStorage.setItem("vanir_global_margin_pct", "0"); } catch {}
+    inp.value = "0";
+    inp.setAttribute("disabled", "disabled");
+    wrap.style.display = "none";
+
+    // If your cart has a render/refresh function, call it to recalc totals immediately.
+    // (Safe no-op if undefined.)
+    try { if (typeof window.renderCart === "function") window.renderCart(); } catch {}
+  } else {
+    inp.removeAttribute("disabled");
+    wrap.style.display = "";
   }
 })();
 </script>
