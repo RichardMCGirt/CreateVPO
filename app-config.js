@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  var PAT = localStorage.getItem("AIRTABLE_API_KEY") || "";
+  var PAT = localStorage.getItem("patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054") || "";
 
   window.APPS = {
     vpo: {
@@ -10,7 +10,7 @@
       uiTitle: "VPO",
       includeLabor: true,
       airtable: {
-        API_KEY: PAT,
+        API_KEY: "patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054",
         BASE_ID: "appQDdkj6ydqUaUkE",
         TABLE_ID: "tblO72Aw6qplOEAhR",
         VIEW_ID:  "viwf55KoUHJZfdEY6",
@@ -34,7 +34,7 @@
       uiTitle: "Fill-In",
       includeLabor: false,
       airtable: {
-        API_KEY: PAT,
+        API_KEY: "patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054",
         BASE_ID: "appeNSp44fJ8QYeY5",              // <-- Fill-In base (stays)
         TABLE_ID: "tblRp5bukUiw9tX9j",              // <-- Fill-In main table (not used for dropdowns)
         VIEW_ID:  "viwh9UWnGFNAoQwcT",              // <-- any view for the main table

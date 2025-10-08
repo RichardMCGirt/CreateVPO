@@ -24,6 +24,15 @@ function saveAtOpts(baseId, data){
 
 (function () {
   "use strict";
+// --- TEST ONLY: hard-code Airtable API key so the UI/services can read it ---
+window.AIRTABLE_CONFIG = Object.assign({}, window.AIRTABLE_CONFIG, {
+  // Put your test PAT here (format starts with "pat")
+  API_KEY: "patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054"
+});
+
+// Some modules read from localStorage; keep them happy too:
+try { localStorage.setItem("AIRTABLE_API_KEY", window.AIRTABLE_CONFIG.API_KEY); } catch {}
+// --- end test shim ---
 
   // ---------- Shared constants ----------
   const STORAGE_KEY = "vanir_cart_v1";
@@ -40,7 +49,6 @@ function broadcastCart(state) {
     bc.postMessage({ type: "cartUpdate", state });
   } catch {}
 }
-
 
   // ---------- Tiny utils ----------
   const $ = (sel) => document.querySelector(sel);
@@ -61,7 +69,6 @@ function broadcastCart(state) {
     return Number.isFinite(n) ? n : 0;
   }
 
-  // ---------- Global material margin ----------
 // ---------- Global material margin ----------
 function getGlobalMarginPct() {
   // Respect app mode: VPO gets a hard 0% margin.
@@ -85,7 +92,6 @@ function itemUnitSell(item) {
   const pct = getGlobalMarginPct(); // single global margin now
   return (Number(item.unitBase) || 0) * (1 + pct / 100);
 }
-
 
   // LocalStorage helpers
 function getSaved() {
