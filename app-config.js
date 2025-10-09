@@ -35,9 +35,9 @@
       includeLabor: false,
       airtable: {
         API_KEY: "patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054",
-        BASE_ID: "appeNSp44fJ8QYeY5",              // <-- Fill-In base (stays)
-        TABLE_ID: "tblRp5bukUiw9tX9j",              // <-- Fill-In main table (not used for dropdowns)
-        VIEW_ID:  "viwh9UWnGFNAoQwcT",              // <-- any view for the main table
+        BASE_ID: "appeNSp44fJ8QYeY5",             
+        TABLE_ID: "tblRp5bukUiw9tX9j",              
+        VIEW_ID:  "viwh9UWnGFNAoQwcT",              
         SOURCES: {
           // Replace TABLE_ID / VIEW_ID with your Fill-In base tables/views.
           // You may use table NAMES (e.g., "Field Managers") or the real "tblXXXXXXXXXXXXXX" id.

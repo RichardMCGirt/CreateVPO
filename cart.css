@@ -32,3 +32,28 @@
     #totals .grand { font-size: 1.1rem; font-weight: 700; }
     #globalMarginWrap { display:flex; justify-content:flex-end; margin: 8px 0 12px; }
     #globalMarginWrap .field { max-width: 200px; }
+
+    /* ===== Hide pricing UI in Fill-In mode ===== */
+html[data-app="fillin"] #globalMarginWrap,
+html[data-app="fillin"] #totals,
+html[data-app="fillin"] #productsTotalLabel,
+html[data-app="fillin"] #laborTotalLabel,
+html[data-app="fillin"] #productTotal,
+html[data-app="fillin"] #laborTotal,
+html[data-app="fillin"] #grandTotal {
+  display: none !important;
+}
+
+/* Hide Unit (Sell) and Line Total columns in the cart table */
+html[data-app="fillin"] #cart-table thead th:nth-child(5),
+html[data-app="fillin"] #cart-table thead th:nth-child(6),
+html[data-app="fillin"] #cart-table tbody td:nth-child(5),
+html[data-app="fillin"] #cart-table tbody td:nth-child(6) {
+  display: none !important;
+}
+
+/* Optional: tighten layout after columns are removed */
+html[data-app="fillin"] #cart-table th,
+html[data-app="fillin"] #cart-table td {
+  white-space: nowrap;
+}
