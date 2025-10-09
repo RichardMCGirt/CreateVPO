@@ -197,6 +197,11 @@
 
 
   <script src="app-ui-gates.js"></script>
+<!-- keep these two lines somewhere after the selects exist -->
+<script>
+document.getElementById("branchSelect")?.addEventListener("change", loadSubcontractorsForSelectedBranch);
+loadSubcontractorsForSelectedBranch(); // initial populate
+</script>
 
   <!-- Tiny runtime toggles for this page -->
   <script>

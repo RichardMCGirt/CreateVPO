@@ -226,47 +226,45 @@ async function initDropdowns(service) {
   }
 
 
-  async function loadSubcontractorsForSelectedBranch(ev) {
-    try {
-      const branchLabel = (branchSel && branchSel.value) ? branchSel.value.trim() : "";
-      if (!branchLabel) {
-        if (subcontractorSel) subcontractorSel.innerHTML = "";
-        return;
-      }
+// FULL replacement — uses the visible option text (label) instead of relying on window.maps
+async function loadSubcontractorsForSelectedBranch(ev) {
+  try {
+    const svc  = new AirtableService();
+    const app  = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
+    const bSel = document.getElementById("branchSelect");
+    const sSel = document.getElementById("subcontractorCompanySelect");
+    if (!bSel || !sSel) return;
 
-      let opts = [];
-      if (APP_MODE === "fillin") {
-       
-      } else {
-        // VPO path (curated)
-        const pairs = await at.fetchSubcontractorOptionsFilteredByBranch(branchLabel);
-        opts = (pairs || []).map(p => p.label);
-      }
+    // Clear first (keep a placeholder)
+    while (sSel.firstChild) sSel.removeChild(sSel.firstChild);
+    sSel.appendChild(new Option("—", ""));
 
-      if (subcontractorSel) {
-        subcontractorSel.innerHTML = "";
-        for (const lbl of opts) {
-          const o = document.createElement("option");
-          o.value = lbl;
-          o.textContent = lbl;
-          subcontractorSel.appendChild(o);
-        }
+    // IMPORTANT: convert Branch recId -> human label using the selected option's text
+    const opt = bSel.selectedOptions && bSel.selectedOptions[0];
+    const branchLabel = ((opt && opt.textContent) || "").trim();
+    if (!branchLabel) return;
+
+    if (app === "vpo") {
+      // Fetch pairs filtered by label, then paint options with VALUE=recId (so saving a linked field works)
+      const pairs = await svc.fetchSubcontractorOptionsFilteredByBranch(branchLabel);
+      for (const p of (pairs || [])) {
+        const o = document.createElement("option");
+        o.value = p.id;           // value = record id (recXXXXXXXXXXXXXX)
+        o.textContent = p.label;  // visible name
+        sSel.appendChild(o);
       }
-    } catch (e) {
-      console.warn("[subcontractor] load failed:", e);
-      if (subcontractorSel) subcontractorSel.innerHTML = "";
+      // bubble change so any dependent logic runs
+      sSel.dispatchEvent(new Event("change", { bubbles: true }));
+    } else {
+      // fill-in path (implement when needed)
     }
-  }
-
-  if (branchSel) {
-    branchSel.removeEventListener("change", loadSubcontractorsForSelectedBranch);
-    branchSel.addEventListener("change", loadSubcontractorsForSelectedBranch);
-    // trigger once if branch already chosen
-    if (branchSel.value) {
-      try { await loadSubcontractorsForSelectedBranch(); } catch {}
-    }
+  } catch (e) {
+    console.warn("[subcontractor] load failed:", e);
+    const sSel = document.getElementById("subcontractorCompanySelect");
+    if (sSel) { sSel.innerHTML = ""; sSel.appendChild(new Option("—", "")); }
   }
 }
+
 
 
 // FULL: refreshSubcontractorsForBranch (per-branch cache; no fetch if cached)

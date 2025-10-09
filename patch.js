@@ -33,7 +33,6 @@ function byAlpha(a, b) {
       return { cart: [] };
     }
   }
-// ========= Drop into patch.js =========
 // patch.js — replace your populateDropdownsFromLinkedTables with this
 async function populateDropdownsFromLinkedTables() {
   const svc = new AirtableService();
@@ -280,13 +279,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 // Refresh subcontractor list whenever Branch changes
-document.getElementById("branchSelect")?.addEventListener("change", loadSubcontractorsForSelectedBranch);
 
-// Initial load (in case a Branch is preselected or after Branch options are filled)
-loadSubcontractorsForSelectedBranch();
 
-// patch.js — FULL replacement for loadSubcontractorsForSelectedBranch
-// patch.js — FULL replacement for loadSubcontractorsForSelectedBranch (VPO path; value=recID)
+// FULL replacement for loadSubcontractorsForSelectedBranch (VPO path; value=recID)
 async function loadSubcontractorsForSelectedBranch(ev) {
   try {
     const svc  = new AirtableService();
@@ -302,7 +297,7 @@ async function loadSubcontractorsForSelectedBranch(ev) {
     const branchId = (bSel.value || "").trim();
     if (!branchId) return;
 
-    // Convert branch ID -> human label using cart.js maps (already maintained there)
+    // Convert Branch recId -> human label
     const label = (window.maps && window.maps.branch && window.maps.branch.idToLabel)
       ? (window.maps.branch.idToLabel.get(branchId) || "")
       : "";
@@ -312,22 +307,23 @@ async function loadSubcontractorsForSelectedBranch(ev) {
       const pairs = await svc.fetchSubcontractorOptionsFilteredByBranch(label);
       for (const p of (pairs || [])) {
         const o = document.createElement("option");
-        o.value = p.id;           // IMPORTANT: rec… id
-        o.textContent = p.label;
+        o.value = p.id;           // IMPORTANT: rec… id for linked field
+        o.textContent = p.label;  // human readable name
         sSel.appendChild(o);
       }
+      // bubble change so any dependent logic runs
       sSel.dispatchEvent(new Event("change", { bubbles: true }));
       return;
     }
 
-    // Fill-In mode (no curated table): leave empty or implement a safe scanner later
-    // (We removed the old 'recs' scan because 'recs' doesn't exist here.)
+    // Fill-In mode: intentionally left empty (implement when needed)
   } catch (e) {
     console.warn("[subcontractor] load failed:", e);
     const sSel = document.getElementById("subcontractorCompanySelect");
     if (sSel) { sSel.innerHTML = ""; sSel.appendChild(new Option("—", "")); }
   }
 }
+
 
 
 window.REC_ID_RE = window.REC_ID_RE || /^rec[a-zA-Z0-9]{14}$/; // rec + 14 chars
