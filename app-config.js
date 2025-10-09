@@ -39,8 +39,7 @@
         TABLE_ID: "tblRp5bukUiw9tX9j",              
         VIEW_ID:  "viwh9UWnGFNAoQwcT",              
         SOURCES: {
-          // Replace TABLE_ID / VIEW_ID with your Fill-In base tables/views.
-          // You may use table NAMES (e.g., "Field Managers") or the real "tblXXXXXXXXXXXXXX" id.
+          
           FIELD_MANAGER: {
             TABLE_ID: "tbla2bIyzulMrfsxC",             // or e.g., "tblAAAAAAAAAAAAAAA"
             VIEW_ID:  "viwDKoeJ0MEWVMJTe",

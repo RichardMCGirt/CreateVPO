@@ -641,8 +641,7 @@ async fetchOptionsFromSource({ tableId, viewId, labelCandidates = [] } = {}) {
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    // Place in whichever file currently starts your app (cart.js or patch.js).
-// Call this from DOMContentLoaded (and remove other duplicate starters).
+ 
 window.__AT_BOOT_PROMISE ||= (async () => {
   if (window.APP?.airtable && typeof setAirtableRuntimeConfig === "function") {
     setAirtableRuntimeConfig(window.APP.airtable);
@@ -664,8 +663,7 @@ window.__AT_BOOT_PROMISE ||= (async () => {
 
   window.persistSelect = persistSelect;
 })();
-// Place in whichever file currently starts your app (cart.js or patch.js).
-// Call this from DOMContentLoaded (and remove other duplicate starters).
+
 window.__AT_BOOT_PROMISE ||= (async () => {
   if (window.APP?.airtable && typeof setAirtableRuntimeConfig === "function") {
     setAirtableRuntimeConfig(window.APP.airtable);

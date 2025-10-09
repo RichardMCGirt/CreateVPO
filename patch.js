@@ -241,8 +241,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (v) vendorSet.add(v);
     }
 
-    lines.push("MATERIALS");
-    lines.push("---------");
+    
     if (items.length) {
       items.forEach((it, idx) => {
         const vendor = (getVendor(it) || it.vendor || "").trim();
@@ -273,9 +272,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const productTotal = document.getElementById("productTotal")?.textContent?.trim();
     if (productTotal) {
-      lines.push("TOTAL Cost");
-      lines.push("------");
-      lines.push(`${productTotal}`);
+      
     }
 
     return lines.join("\n");
