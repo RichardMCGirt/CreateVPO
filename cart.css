@@ -34,7 +34,6 @@
     #globalMarginWrap .field { max-width: 200px; }
 
     /* ===== Hide pricing UI in Fill-In mode ===== */
-html[data-app="fillin"] #globalMarginWrap,
 html[data-app="fillin"] #totals,
 html[data-app="fillin"] #productsTotalLabel,
 html[data-app="fillin"] #laborTotalLabel,
