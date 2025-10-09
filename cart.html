@@ -443,11 +443,11 @@
     return out;
   }
 
-  function filterManagersByBranch(managerOptions, branchLabel) {
-    const b = norm(branchLabel);
-    if (!b) return managerOptions.slice(); // show all if branch empty
-    return managerOptions.filter(m => norm(m.fields?.["Vanir Office"]) === b);
-  }
+function filterManagersByBranch(managerOptions, branchLabel) {
+  // Unfiltered: ignore branch/Vanir Office and return all managers
+  return Array.isArray(managerOptions) ? managerOptions.slice() : [];
+}
+
 
   async function wireManagerFiltering() {
     const branchSel = document.getElementById(BRANCH_SELECT_ID);
@@ -508,8 +508,7 @@
     inp.setAttribute("disabled", "disabled");
     wrap.style.display = "none";
 
-    // If your cart has a render/refresh function, call it to recalc totals immediately.
-    // (Safe no-op if undefined.)
+  
     try { if (typeof window.renderCart === "function") window.renderCart(); } catch {}
   } else {
     inp.removeAttribute("disabled");
