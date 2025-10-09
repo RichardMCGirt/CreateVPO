@@ -264,7 +264,7 @@ async function loadSubcontractorsForSelectedBranch(ev) {
     if (sSel) { sSel.innerHTML = ""; sSel.appendChild(new Option("—", "")); }
   }
 }
-
+}
 
 
 // FULL: refreshSubcontractorsForBranch (per-branch cache; no fetch if cached)
