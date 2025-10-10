@@ -435,11 +435,62 @@ function getSelectedRecordIdWithMap(sel, map){
 
 function recIdArr(recId){ return window.REC_ID_RE.test(recId) ? [recId] : []; }
 
-function unmoney(s){
-  if (!s) return null;
-  const n = Number(String(s).replace(/[^0-9.-]/g,""));
-  return Number.isFinite(n) ? n : null;
+
+// Recognize Airtable record ids
+const REC_ID_RE = /^rec[a-zA-Z0-9]{14}$/;
+
+// Where we persist the current record id once created/fetched
+const LS_REC_KEY = "vanir_current_record_id";
+
+// Resolve the current record id from multiple places (URL, hidden input, localStorage, window)
+function getTargetRecordId(){
+  // a) explicit global
+  if (typeof window.CURRENT_RECORD_ID === "string" && REC_ID_RE.test(window.CURRENT_RECORD_ID)) {
+    return window.CURRENT_RECORD_ID;
+  }
+  // b) ?recordId=recXXXXXXXXXXXXXX | ?id=... | ?rid=...
+  try {
+    const u = new URL(location.href);
+    for (const k of ["recordId","id","rid"]) {
+      const v = (u.searchParams.get(k) || "").trim();
+      if (REC_ID_RE.test(v)) return v;
+    }
+  } catch {}
+  // c) hidden input or data attribute
+  const hid = document.getElementById("currentRecordId");
+  if (hid && REC_ID_RE.test(hid.value || "")) return hid.value.trim();
+  const bodyRid = document.body?.getAttribute?.("data-current-record-id") || "";
+  if (REC_ID_RE.test(bodyRid)) return bodyRid.trim();
+  // d) localStorage
+  const ls = (localStorage.getItem(LS_REC_KEY) || "").trim();
+  if (REC_ID_RE.test(ls)) return ls;
+  return null;
 }
+
+// Save the id so subsequent saves can reference it
+function setCurrentRecordId(id){
+  if (REC_ID_RE.test(id)) {
+    localStorage.setItem(LS_REC_KEY, id);
+    window.CURRENT_RECORD_ID = id;
+    // if you have a hidden input, mirror it:
+    const hid = document.getElementById("currentRecordId");
+    if (hid) hid.value = id;
+    // also mirror on body for debugging convenience
+    document.body?.setAttribute?.("data-current-record-id", id);
+  }
+}
+
+// Safe “money” parser used below
+function unmoney(s){
+  if (!s || !String(s).trim()) return null;
+  return Number(String(s).replace(/[^0-9.-]/g,"")) || null;
+}
+
+// Utility
+function nonEmpty(s){ return !!(s && String(s).trim()); }
+function getSelectedLabel(sel){ return sel?.selectedOptions?.[0]?.textContent?.trim() || ""; }
+function recIdArr(id){ return [String(id)]; }
+function toNumberLoose(x){ const n = Number(x); return Number.isFinite(n) ? n : 0; }
 
 async function handleSave(){
   const t0 = (performance.now ? performance.now() : Date.now());
@@ -459,176 +510,162 @@ async function handleSave(){
     const elevEl        = document.getElementById("elevation");
     const reasonSel     = document.getElementById("reasonSelect");
     const describeEl    = document.getElementById("pleaseDescribe");
-    const descWorkEl    = document.getElementById("describeWorkInput");
+const descWorkEl    = document.getElementById("descriptionOfWork");
 
-    let btn;
-    try {
-      btn = document.activeElement && document.activeElement.tagName === "BUTTON"
-        ? document.activeElement
-        : document.getElementById("btnSave");
-      if (btn) btn.disabled = true;
-    } catch {}
-
-    // ---- Customers (linked or plaintext) ----
+    // ---------- Linked/Plain fields ----------
+    // Customer Name (if your base expects a linked field, ensure the <option value> is a recId)
     if (customerSel) {
-      const rec = window.resolveRecIdFromSelect
-        ? window.resolveRecIdFromSelect(customerSel, window.LINKED?.customersByName)
-        : getSelectedRecordIdWithMap(customerSel, window.LINKED?.customersByName);
+      const val = (customerSel.value || "").trim();
       const lbl = getSelectedLabel(customerSel);
-
-      if (window.CUSTOMER_NAME_IS_PLAINTEXT) {
-        if (nonEmpty(lbl) && lbl !== "—") fields["Customer Name"] = lbl;
-        else suspicious.push("Customer Name (empty label)");
-      } else {
-        if (rec) fields["Customer Name"] = recIdArr(rec);
-        else {
-          console.warn('Omitting "Customer Name": no record id found ', { value: customerSel.value, label: lbl });
-          suspicious.push("Customer Name (no record id; ensure value or data-recid or map exists)");
-        }
-      }
+      if (REC_ID_RE.test(val)) fields["Customer Name"] = recIdArr(val);
+      else if (nonEmpty(lbl))  fields["Customer Name"] = lbl; // fallback if your field is plain text
+      else suspicious.push("Customer Name (empty)");
     }
 
-    // ---- Vanir Office (Branch, linked) ----
+    // Branch (linked)
     if (branchSel) {
-      const rec = window.resolveRecIdFromSelect
-        ? window.resolveRecIdFromSelect(branchSel, window.LINKED?.branchesByName)
-        : getSelectedRecordIdWithMap(branchSel, window.LINKED?.branchesByName);
+      const val = (branchSel.value || "").trim();
       const lbl = getSelectedLabel(branchSel);
-
-      if (rec) fields["Branch"] = recIdArr(rec);
-      else {
-        console.warn('Omitting "Vanir Office": not a record id ', { value: branchSel.value, label: lbl });
-        suspicious.push(`Vanir Office (not a record id: ${branchSel.value || lbl})`);
-      }
+      if (REC_ID_RE.test(val)) fields["Branch"] = recIdArr(val);
+      else suspicious.push(`Branch (not recId: ${val || lbl})`);
     }
 
-    // ---- Field Technician (linked) ----
+    // Field Manager (linked)
     if (fmSel) {
-      const rec = window.resolveRecIdFromSelect
-        ? window.resolveRecIdFromSelect(fmSel, window.LINKED?.managersByName)
-        : getSelectedRecordIdWithMap(fmSel, window.LINKED?.managersByName);
+      const val = (fmSel.value || "").trim();
       const lbl = getSelectedLabel(fmSel);
-
-      if (rec) fields["Field Manager"] = recIdArr(rec);
-      else if (nonEmpty(lbl) && lbl !== "—") {
-        console.warn('Omitting "Field Technician": label present but no rec id. Linked field requires array of rec ids. ', { value: fmSel.value, label: lbl });
-        suspicious.push("Field Technician (missing rec id; linked field requires ARRAY of rec ids)");
-      } else {
-        suspicious.push("Field Technician (no selection)");
-      }
+      if (REC_ID_RE.test(val)) fields["Field Manager"] = recIdArr(val);
+      else if (nonEmpty(lbl)) suspicious.push("Field Manager (label present but not recId)");
+      else suspicious.push("Field Manager (empty)");
     }
 
-    // ---- Needed By ----
+    // Needed By (date)
     if (neededBySel && neededBySel.value) {
       fields["Needed By"] = neededBySel.value;
       if (!/^\d{4}-\d{2}-\d{2}/.test(neededBySel.value)) {
-        suspicious.push("Needed By (format may not match date field): " + neededBySel.value);
+        suspicious.push("Needed By (format?) " + neededBySel.value);
       }
     }
 
-    // ---- Free text ----
-    const jobName  = jobNameEl?.value || "";
-    const planName = planNameEl?.value || "";
-    const elev     = elevEl?.value || "";
-    if (nonEmpty(jobName))  fields["Job Name"]   = jobName;
-    if (nonEmpty(planName)) fields["Plan Name"]  = planName;
-    if (nonEmpty(elev))     fields["Elevation"]  = elev;
-
-    if (reasonSel?.value) fields["Reason For Fill In"] = reasonSel.value;
-
-    const desc = (describeEl?.value || "").trim();
-    if (nonEmpty(desc)) fields["Please Describe"] = desc;
-
-    // ---- Subcontractor (linked; keep your older logic or add a map like above) ----
+    // Subcontractor (linked)
     if (subSel) {
-      const rec = window.resolveRecIdFromSelect
-        ? window.resolveRecIdFromSelect(subSel, window.LINKED?.subcontractorsByName /* if you build it */)
-        : getSelectedRecordIdWithMap(subSel, window.LINKED?.subcontractorsByName);
+      const val = (subSel.value || "").trim();
       const lbl = getSelectedLabel(subSel);
-      if (rec) fields["Subcontractor"] = recIdArr(rec);
-      else if (subSel.value) {
-        console.warn('Omitting "Subcontractor": not a record id ', { value: subSel.value, label: lbl });
-        suspicious.push('Subcontractor (not a record id: ' + (subSel.value||lbl) + ')');
+      if (REC_ID_RE.test(val)) fields["Subcontractor"] = recIdArr(val);
+      else if (nonEmpty(lbl)) suspicious.push("Subcontractor (label present but not recId)");
+    }
+
+    // ---------- Description of Work ----------
+   const descWork = (descWorkEl?.value || "").trim();
+if (nonEmpty(descWork)) fields["Description of Work"] = descWork;
+
+    // Optionally “Please Describe”
+    if (describeEl && nonEmpty(describeEl.value)) fields["Please Describe"] = describeEl.value.trim();
+
+    // Free text
+    if (jobNameEl && nonEmpty(jobNameEl.value)) fields["Job Name"] = jobNameEl.value.trim();
+    if (planNameEl && nonEmpty(planNameEl.value)) fields["Plan Name"] = planNameEl.value.trim();
+    if (elevEl && nonEmpty(elevEl.value)) fields["Elevation"] = elevEl.value.trim();
+    if (reasonSel && nonEmpty(reasonSel.value)) fields["Reason For Fill In"] = reasonSel.value.trim();
+
+    // ---------- Materials Needed (reuse your existing builder if you have it) ----------
+    if (typeof buildMaterialsNeededText === "function") {
+      try {
+        const materials = buildMaterialsNeededText();
+        if (typeof materials === "string") fields["Materials Needed"] = materials;
+        else suspicious.push("Materials Needed (not a string)");
+      } catch (e) {
+        console.warn("[Save] buildMaterialsNeededText() threw:", e);
+        suspicious.push("Materials Needed (builder error)");
       }
     }
 
-    const descWork = (descWorkEl?.value || "").trim();
-    if (nonEmpty(descWork)) fields["Description of Work"] = descWork;
-
+    // ---------- Money fields from UI ----------
+    // Material Cost = Products Total
     try {
-      const materials = buildMaterialsNeededText();
-      fields["Materials Needed"] = materials;
-      if (typeof materials !== "string") suspicious.push("Materials Needed (not a string)");
+      const productTotalStr = document.getElementById("productTotal")?.textContent?.trim() || "";
+      const productTotalVal = unmoney(productTotalStr);
+      if (productTotalVal != null && Number.isFinite(productTotalVal)) {
+        fields["Material Cost"] = Number(productTotalVal);
+      } else {
+        suspicious.push("Material Cost parse failed: " + productTotalStr);
+      }
     } catch (e) {
-      console.warn("[Save] buildMaterialsNeededText() threw:", e);
-      suspicious.push("Materials Needed (builder threw error)");
+      suspicious.push("Material Cost (parse error)");
     }
 
+    // Price to Customer = Grand Total
+    try {
+      const grandTotalStr = document.getElementById("grandTotal")?.textContent?.trim() || "";
+      const grandTotalVal = unmoney(grandTotalStr);
+      if (grandTotalVal != null && Number.isFinite(grandTotalVal)) {
+        fields["Price to Customer"] = Number(grandTotalVal);
+      } else {
+        suspicious.push("Price to Customer parse failed: " + grandTotalStr);
+      }
+    } catch (e) {
+      suspicious.push("Price to Customer (parse error)");
+    }
+
+    // Labor Cost (if applicable)
     if (window.APP?.includeLabor) {
       try {
         const laborTotalStr = document.getElementById("laborTotal")?.textContent?.trim() || "";
         const laborTotalVal = unmoney(laborTotalStr);
-        if (laborTotalVal != null && !Number.isNaN(Number(laborTotalVal))) {
+        if (laborTotalVal != null && Number.isFinite(laborTotalVal)) {
           fields["Labor Cost"] = Number(laborTotalVal);
         } else {
-          suspicious.push("Labor Cost (could not parse): " + laborTotalStr);
+          suspicious.push("Labor Cost parse failed: " + laborTotalStr);
         }
       } catch (e) {
-        console.warn("[Save] Labor Cost parse error:", e);
         suspicious.push("Labor Cost (parse error)");
       }
     }
 
-    // Diagnostics
+    // ---------- Log what we’re sending ----------
     try {
-      const entries = Object.entries(fields).map(([k, v]) => ({
-        field: k,
+      console.table(Object.entries(fields).map(([k,v])=>({
+        field:k,
         type: Array.isArray(v) ? "array" : typeof v,
-        length: Array.isArray(v) ? v.length : (typeof v === "string" ? v.length : ""),
-        preview: Array.isArray(v) ? v.join(",") : (String(v).length > 200 ? String(v).slice(0,200) + "…" : String(v))
-      }));
-      console.table(entries);
+        value: Array.isArray(v) ? v.join(",") : String(v).slice(0,150)
+      })));
+      if (suspicious.length) console.warn("[Save] Suspicious:", suspicious);
     } catch {}
 
-    if (suspicious.length) console.warn("[Save] Suspicious payload notes:", suspicious);
-
-    // Preflight shape check for linked fields
-    (function validateLinkedShapes(){
-      const linkedFields = ["Customer Name", "Branch", "Field Manager", "Subcontractor"];
-      for (const lf of linkedFields) {
-        if (lf in fields) {
-          const v = fields[lf];
-          if (!Array.isArray(v) || !v.length || !v.every(x => typeof x === "string" && window.REC_ID_RE.test(x))) {
-            console.error(`[Save] ${lf} must be ARRAY of rec IDs. Current value:`, v);
-            throw new Error(`${lf} invalid shape (must be ["recXXXXXXXXXXXXXX"])`);
-          }
-        }
-      }
-    })();
-
+    // ---------- Save: create if we don't already have an id ----------
     setStatus && setStatus("Saving…");
-    console.debug("[Save] createRecord payload:", fields);
-    const rec = await svc.createRecord(fields, { typecast: true });
-    setStatus && setStatus("Saved ✓", "ok");
-    console.log("[Save] Created record: ", rec);
 
-  } catch (e) {
-    console.error("[Save] Save failed:", e && e.stack ? e.stack : e);
+    const existingId = getTargetRecordId();
+    if (existingId) {
+      // You don't have an update/patch API in AirtableService right now.
+      // If/when you add svc.updateRecord(recordId, fields), use it here.
+      console.warn("[Save] Existing record id present, but update method not implemented. Creating a new row instead.");
+    }
+
+    // Create the record
+    const rec = await svc.createRecord(fields, { typecast: true });
+    setCurrentRecordId(rec?.id); // remember for future saves
+    setStatus && setStatus("Saved ✓", "ok");
+    console.info("[Save] Created record:", rec?.id);
+
+  } catch (err) {
+    console.error("[Save] Save failed:", err && err.stack ? err.stack : err);
     try {
       setStatus && setStatus("Error saving", "bad");
       const banner = document.getElementById("airtableBanner");
-      if (banner && /Missing Airtable API Key/i.test(String(e))) banner.style.display = "block";
+      if (banner && /Missing Airtable API Key/i.test(String(err))) banner.style.display = "block";
     } catch {}
   } finally {
     const ms = (performance.now ? performance.now() : Date.now()) - t0;
     console.info("[Save] handleSave finished in", Math.round(ms), "ms");
     try {
       const btn = document.getElementById("btnSave");
-      if (btn) setTimeout(() => { btn.disabled = false; }, 300);
+      if (btn) setTimeout(()=>{ btn.disabled = false; }, 300);
     } catch {}
     console.groupEnd();
   }
 }
+
 
 // ===== linked-population.js =====
 // Use this after you fetch the linked tables from Airtable.
