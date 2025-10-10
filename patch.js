@@ -432,12 +432,7 @@ function getSelectedRecordIdWithMap(sel, map){
   return "";
 }
 
-
 function recIdArr(recId){ return window.REC_ID_RE.test(recId) ? [recId] : []; }
-
-
-// Recognize Airtable record ids
-const REC_ID_RE = /^rec[a-zA-Z0-9]{14}$/;
 
 // Where we persist the current record id once created/fetched
 const LS_REC_KEY = "vanir_current_record_id";
@@ -479,6 +474,65 @@ function setCurrentRecordId(id){
     document.body?.setAttribute?.("data-current-record-id", id);
   }
 }
+// Normalizer for fuzzy label matching
+function norm(s){ return String(s||"").trim().toLowerCase().replace(/\s+/g," "); }
+
+// Pick the most frequent string in an array
+function mostCommon(arr){
+  const m = new Map();
+  for (const x of arr) m.set(x, (m.get(x)||0)+1);
+  let best=null, cnt=0;
+  for (const [k,v] of m) if (v>cnt){ best=k; cnt=v; }
+  return best;
+}
+
+// Force lookup in the exact table that the "Preferred Vendor" field links to
+async function resolveVendorRecordId(label, svc) {
+  if (!label) return null;
+  const service = svc || new AirtableService();
+  const tableId = (window.APP?.airtable?.PREFERRED_VENDOR_TABLE_ID) || "tblp77wpnsiIjJLGh";
+  const rec = await service.findVendorByName(label, { tableId });
+  return rec?.id || null;
+}
+
+// Verify an id actually belongs to the given table (returns true/false)
+async function ensureIdInTable(service, tableId, recId) {
+  try {
+    const url = service.otherTableUrl(tableId, recId);
+    const res = await fetch(url, { headers: service.headers() });
+    return res.ok; // 200 means the id exists in that table; 404 means wrong table
+  } catch {
+    return false;
+  }
+}
+
+
+window.collectVendorLabels = collectVendorLabels;
+window.mostCommon          = mostCommon;
+window.resolveVendorRecordId = resolveVendorRecordId;
+// Collect vendor labels from UI/cart (DOM-first; state fallback)
+function collectVendorLabels(){
+  const out = [];
+
+  // A) DOM: the "Selected SKUs" table has <td data-label="Vendor">...</td>
+  document.querySelectorAll('td[data-label="Vendor"]').forEach(td=>{
+    const t = (td.textContent || "").trim();
+    if (t) out.push(t);
+  });
+
+  // B) Saved state (if available)
+  try {
+    const state = (typeof getSaved === "function") ? getSaved() : null;
+    if (state?.cart?.length){
+      for (const it of state.cart){
+        const v = (it?.Vendor || it?.vendor || it?.vendorName || "").trim?.();
+        if (v) out.push(v);
+      }
+    }
+  } catch{}
+
+  return out;
+}
 
 // Safe “money” parser used below
 function unmoney(s){
@@ -500,6 +554,7 @@ async function handleSave(){
     const fields = {};
     const suspicious = [];
 
+    // Grab elements
     const customerSel   = document.getElementById("customerSelect");
     const branchSel     = document.getElementById("branchSelect");
     const fmSel         = document.getElementById("fieldManagerSelect");
@@ -510,31 +565,34 @@ async function handleSave(){
     const elevEl        = document.getElementById("elevation");
     const reasonSel     = document.getElementById("reasonSelect");
     const describeEl    = document.getElementById("pleaseDescribe");
-const descWorkEl    = document.getElementById("descriptionOfWork");
+    const descWorkEl    = document.getElementById("descriptionOfWork");   // <-- correct id
+    const prefVendSel   = document.getElementById("preferredVendorSelect") 
+                       || document.getElementById("vendorSelect");        // try both ids
 
     // ---------- Linked/Plain fields ----------
-    // Customer Name (if your base expects a linked field, ensure the <option value> is a recId)
+    // Customer Name
     if (customerSel) {
-      const val = (customerSel.value || "").trim();
+      const id = resolveRecIdFromSelect(customerSel, window.LINKED?.customersByName);
       const lbl = getSelectedLabel(customerSel);
-      if (REC_ID_RE.test(val)) fields["Customer Name"] = recIdArr(val);
-      else if (nonEmpty(lbl))  fields["Customer Name"] = lbl; // fallback if your field is plain text
+      // If your Airtable field is linked: prefer recId
+      if (id) fields["Customer Name"] = recIdArr(id);
+      else if (nonEmpty(lbl)) fields["Customer Name"] = lbl; // if your field is plain text
       else suspicious.push("Customer Name (empty)");
     }
 
     // Branch (linked)
     if (branchSel) {
-      const val = (branchSel.value || "").trim();
+      const id = resolveRecIdFromSelect(branchSel, window.LINKED?.branchesByName);
       const lbl = getSelectedLabel(branchSel);
-      if (REC_ID_RE.test(val)) fields["Branch"] = recIdArr(val);
-      else suspicious.push(`Branch (not recId: ${val || lbl})`);
+      if (id) fields["Branch"] = recIdArr(id);
+      else suspicious.push(`Branch (not recId: ${branchSel.value || lbl})`);
     }
 
     // Field Manager (linked)
     if (fmSel) {
-      const val = (fmSel.value || "").trim();
+      const id = resolveRecIdFromSelect(fmSel, window.LINKED?.managersByName);
       const lbl = getSelectedLabel(fmSel);
-      if (REC_ID_RE.test(val)) fields["Field Manager"] = recIdArr(val);
+      if (id) fields["Field Manager"] = recIdArr(id);
       else if (nonEmpty(lbl)) suspicious.push("Field Manager (label present but not recId)");
       else suspicious.push("Field Manager (empty)");
     }
@@ -542,33 +600,53 @@ const descWorkEl    = document.getElementById("descriptionOfWork");
     // Needed By (date)
     if (neededBySel && neededBySel.value) {
       fields["Needed By"] = neededBySel.value;
-      if (!/^\d{4}-\d{2}-\d{2}/.test(neededBySel.value)) {
-        suspicious.push("Needed By (format?) " + neededBySel.value);
-      }
+      if (!/^\d{4}-\d{2}-\d{2}/.test(neededBySel.value)) suspicious.push("Needed By (format?) " + neededBySel.value);
     }
 
     // Subcontractor (linked)
     if (subSel) {
-      const val = (subSel.value || "").trim();
+      const id = resolveRecIdFromSelect(subSel, window.LINKED?.subcontractorsByName);
       const lbl = getSelectedLabel(subSel);
-      if (REC_ID_RE.test(val)) fields["Subcontractor"] = recIdArr(val);
+      if (id) fields["Subcontractor"] = recIdArr(id);
       else if (nonEmpty(lbl)) suspicious.push("Subcontractor (label present but not recId)");
     }
 
-    // ---------- Description of Work ----------
-   const descWork = (descWorkEl?.value || "").trim();
-if (nonEmpty(descWork)) fields["Description of Work"] = descWork;
+try {
+  const vendorLabels = collectVendorLabels();
+  const chosenLabel  = mostCommon(vendorLabels);
+  if (chosenLabel) {
+    const preferredTableId = (window.APP?.airtable?.PREFERRED_VENDOR_TABLE_ID) || "tblp77wpnsiIjJLGh";
+    const venId = await resolveVendorRecordId(chosenLabel, svc); // forced to linked table
+    if (venId) {
+      // final guard: make sure this recId is indeed in the linked table
+      const ok = await ensureIdInTable(svc, preferredTableId, venId);
+      if (ok) {
+        fields["Preferred Vendor"] = [venId];
+      } else {
+        console.warn('[Preferred Vendor] Resolved id is not in linked table; skipping to avoid 422', { chosenLabel, venId, preferredTableId });
+      }
+    } else {
+      console.warn('[Preferred Vendor] No match in linked table for label:', chosenLabel);
+    }
+  }
+} catch (e) {
+  console.warn("[Preferred Vendor] auto-derive failed:", e);
+}
 
-    // Optionally “Please Describe”
+    // ---------- Description of Work ----------
+    const descWork = (descWorkEl?.value || "").trim();
+    if (nonEmpty(descWork)) fields["Description of Work"] = descWork;
+
+    // Optional “Please Describe”
     if (describeEl && nonEmpty(describeEl.value)) fields["Please Describe"] = describeEl.value.trim();
 
-    // Free text
+    // Free text fields
     if (jobNameEl && nonEmpty(jobNameEl.value)) fields["Job Name"] = jobNameEl.value.trim();
     if (planNameEl && nonEmpty(planNameEl.value)) fields["Plan Name"] = planNameEl.value.trim();
     if (elevEl && nonEmpty(elevEl.value)) fields["Elevation"] = elevEl.value.trim();
     if (reasonSel && nonEmpty(reasonSel.value)) fields["Reason For Fill In"] = reasonSel.value.trim();
 
-    // ---------- Materials Needed (reuse your existing builder if you have it) ----------
+    // ---------- Materials Needed ----------
     if (typeof buildMaterialsNeededText === "function") {
       try {
         const materials = buildMaterialsNeededText();
@@ -580,7 +658,7 @@ if (nonEmpty(descWork)) fields["Description of Work"] = descWork;
       }
     }
 
-    // ---------- Money fields from UI ----------
+    // ---------- Money fields ----------
     // Material Cost = Products Total
     try {
       const productTotalStr = document.getElementById("productTotal")?.textContent?.trim() || "";
@@ -622,7 +700,7 @@ if (nonEmpty(descWork)) fields["Description of Work"] = descWork;
       }
     }
 
-    // ---------- Log what we’re sending ----------
+    // ---------- Debug table ----------
     try {
       console.table(Object.entries(fields).map(([k,v])=>({
         field:k,
@@ -632,19 +710,17 @@ if (nonEmpty(descWork)) fields["Description of Work"] = descWork;
       if (suspicious.length) console.warn("[Save] Suspicious:", suspicious);
     } catch {}
 
-    // ---------- Save: create if we don't already have an id ----------
+    // ---------- Save: create (or update later if you add updateRecord) ----------
     setStatus && setStatus("Saving…");
 
     const existingId = getTargetRecordId();
     if (existingId) {
-      // You don't have an update/patch API in AirtableService right now.
-      // If/when you add svc.updateRecord(recordId, fields), use it here.
-      console.warn("[Save] Existing record id present, but update method not implemented. Creating a new row instead.");
+      console.warn("[Save] Existing record id present, but update method not implemented. Creating new row instead.");
     }
 
-    // Create the record
     const rec = await svc.createRecord(fields, { typecast: true });
-    setCurrentRecordId(rec?.id); // remember for future saves
+    setCurrentRecordId(rec?.id);
+
     setStatus && setStatus("Saved ✓", "ok");
     console.info("[Save] Created record:", rec?.id);
 
@@ -658,13 +734,11 @@ if (nonEmpty(descWork)) fields["Description of Work"] = descWork;
   } finally {
     const ms = (performance.now ? performance.now() : Date.now()) - t0;
     console.info("[Save] handleSave finished in", Math.round(ms), "ms");
-    try {
-      const btn = document.getElementById("btnSave");
-      if (btn) setTimeout(()=>{ btn.disabled = false; }, 300);
-    } catch {}
+    try { const btn = document.getElementById("btnSave"); if (btn) setTimeout(()=>{ btn.disabled = false; }, 300); } catch {}
     console.groupEnd();
   }
 }
+
 
 
 // ===== linked-population.js =====
@@ -843,26 +917,19 @@ function initManagersSelect(selectEl, managerRecords){
   });
 }
 
-/**
- * If a <select> still uses labels as values (legacy), this resolves to a record id.
- * Tries, in order:
- *   1) value is already a recId
- *   2) selected <option data-recid>
- *   3) lookup by label via a provided Map
- */
-function resolveRecIdFromSelect(sel, map){
-  if (!sel) return "";
-  const raw = (sel.value || "").trim();
-  if (window.REC_ID_RE.test(raw)) return raw;
-
+function resolveRecIdFromSelect(sel, nameToIdMap){
+  if (!sel) return null;
+  const val = (sel.value || "").trim();
+  if (REC_ID_RE.test(val)) return val;                       // case 1: value is recId
   const opt = sel.selectedOptions && sel.selectedOptions[0];
-  const rid = (opt && opt.getAttribute("data-recid")) || "";
-  if (window.REC_ID_RE.test(rid)) return rid;
-
-  const label = (opt ? opt.textContent : raw).trim().toLowerCase();
-  if (label && map && map.has(label)) return map.get(label);
-
-  return "";
+  const dataRec = opt?.getAttribute?.("data-recid") || "";   // case 2: data-recid
+  if (REC_ID_RE.test(dataRec)) return dataRec;
+  const label = (opt?.textContent || "").trim();
+  if (nameToIdMap && label) {
+    const hit = nameToIdMap.get?.(label) || nameToIdMap[label]; // case 3: map by label
+    if (REC_ID_RE.test(hit)) return hit;
+  }
+  return null;
 }
 
 // Export globals for reuse in handleSave.js

@@ -27,18 +27,25 @@ const _startedTimers = new Set();
   };
 
   // Setter to update config LIVE when the user toggles modes
-  global.setAirtableRuntimeConfig = function(next){
-    if (!next || typeof next !== "object") return;
-    AIRTABLE_CONFIG = {
-      API_KEY: String(next.API_KEY || AIRTABLE_CONFIG.API_KEY || ""),
-      BASE_ID: String(next.BASE_ID || AIRTABLE_CONFIG.BASE_ID || ""),
-      TABLE_ID: String(next.TABLE_ID || AIRTABLE_CONFIG.TABLE_ID || ""),
-      VIEW_ID: String(next.VIEW_ID || AIRTABLE_CONFIG.VIEW_ID || ""),
-      SOURCES: { ...(AIRTABLE_CONFIG.SOURCES || {}), ...(next.SOURCES || {}) }
-    };
-    global.AIRTABLE_CONFIG = AIRTABLE_CONFIG; // expose so others see the update
-    try { console.debug("[AT] config updated:", { base: AIRTABLE_CONFIG.BASE_ID, table: AIRTABLE_CONFIG.TABLE_ID }); } catch {}
+ global.setAirtableRuntimeConfig = function(next){
+  if (!next || typeof next !== "object") return;
+  AIRTABLE_CONFIG = {
+    // keep existing keys
+    API_KEY: String(next.API_KEY || AIRTABLE_CONFIG.API_KEY || ""),
+    BASE_ID: String(next.BASE_ID || AIRTABLE_CONFIG.BASE_ID || ""),
+    TABLE_ID: String(next.TABLE_ID || AIRTABLE_CONFIG.TABLE_ID || ""),
+    VIEW_ID: String(next.VIEW_ID || AIRTABLE_CONFIG.VIEW_ID || ""),
+    // ✅ PRESERVE/LAYER VENDOR KEYS TOO
+    PREFERRED_VENDOR_TABLE_ID: next.PREFERRED_VENDOR_TABLE_ID || AIRTABLE_CONFIG.PREFERRED_VENDOR_TABLE_ID,
+    VENDORS_TABLE_ID:         next.VENDORS_TABLE_ID         || AIRTABLE_CONFIG.VENDORS_TABLE_ID,
+    VENDORS_NAME_FIELDS:      next.VENDORS_NAME_FIELDS      || AIRTABLE_CONFIG.VENDORS_NAME_FIELDS,
+    // merge SOURCES without dropping existing
+    SOURCES: { ...(AIRTABLE_CONFIG.SOURCES || {}), ...(next.SOURCES || {}) }
   };
+  global.AIRTABLE_CONFIG = AIRTABLE_CONFIG;
+  try { console.debug("[AT] config updated:", { base: AIRTABLE_CONFIG.BASE_ID, table: AIRTABLE_CONFIG.TABLE_ID }); } catch {}
+};
+
 
   // ---------- Small shared formatter (MUST be top-level) ---------------------
   function _fmtSrc(where, baseId, tableId, viewId){
@@ -149,6 +156,7 @@ timeEnd(label) {
   class AirtableService {
     constructor(cfg = AIRTABLE_CONFIG) {
       const c = cfg || {};
+      this.config = c;                 // ✅ add this
       this.apiKey = String(c.API_KEY || "").replace(/^Bearer\s+/i, "");
       this.baseId = c.BASE_ID;
       this.tableId = c.TABLE_ID;
@@ -200,6 +208,101 @@ timeEnd(label) {
       const base = `https://api.airtable.com/v0/${this.baseId}/${tableId}`;
       return id ? `${base}/${id}` : base;
     }
+// Minimal vendor lookup by name (exact or case-insensitive)
+// ---- internal fallbacks so this method works even if urlForTable()/headers() don't exist ----
+_tableUrl(tableId) {
+  // Prefer an existing helper if your service already defines it
+  if (typeof this.urlForTable === "function") return this.urlForTable(tableId);
+  if (typeof this.url === "function") {
+    // Some services implement url(tableId) or url() that returns "https://api.airtable.com/v0/{baseId}"
+    const u = this.url.length >= 1 ? this.url(tableId) : (this.url() + "/" + tableId);
+    return u;
+  }
+  // Build from config if nothing else exists
+  const baseId =
+    this.baseId ||
+    this.config?.BASE_ID ||
+    (typeof window !== "undefined" && window.APP?.airtable?.BASE_ID);
+  if (!baseId) throw new Error("Airtable baseId not found; set config.BASE_ID");
+  return `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableId)}`;
+}
+
+_headers() {
+  if (typeof this.headers === "function") return this.headers();
+  const apiKey =
+    this.apiKey ||
+    this.config?.API_KEY ||
+    (typeof window !== "undefined" && window.APP?.airtable?.API_KEY);
+  if (!apiKey) throw new Error("Airtable API key not found; set config.API_KEY");
+  return {
+    "Authorization": `Bearer ${apiKey}`,
+    "Content-Type": "application/json"
+  };
+}
+
+_tableUrl(tableId) {
+  if (typeof this.urlForTable === "function") return this.urlForTable(tableId);
+  if (typeof this.url === "function") return this.url.length ? this.url(tableId) : (this.url() + "/" + tableId);
+  const baseId = this.baseId || this.config?.BASE_ID || (window.APP?.airtable?.BASE_ID);
+  if (!baseId) throw new Error("Airtable baseId not found; set config.BASE_ID");
+  return `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableId)}`;
+}
+_headers() {
+  if (typeof this.headers === "function") return this.headers();
+  const apiKey = this.apiKey || this.config?.API_KEY || (window.APP?.airtable?.API_KEY);
+  if (!apiKey) throw new Error("Airtable API key not found; set config.API_KEY");
+  return { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+}
+
+// Find by name in a specific table (opts.tableId), fallback to config tables
+async findVendorByName(name, opts = {}) {
+  if (!name) return null;
+
+  const tableId =
+    opts.tableId ||
+    this.config?.PREFERRED_VENDOR_TABLE_ID ||   // <-- use the linked table first
+    this.config?.VENDORS_TABLE_ID ||           // fallback to source table
+    "tbl0JQXyAizkNZF5s";
+
+  const nameFields =
+    opts.nameFields ||
+    this.config?.VENDORS_NAME_FIELDS ||
+    ["Name", "Vendor Name", "Company", "Company Name", "Subcontractor Company Name"];
+
+  const esc = s => String(s || "").replace(/'/g, "\\'");
+  const baseUrl = this._tableUrl(tableId);
+  const headers = this._headers();
+
+  for (const field of nameFields) {
+    // exact
+    {
+      const url = new URL(baseUrl);
+      url.searchParams.set("pageSize", "1");
+      url.searchParams.set("filterByFormula", `{${field}}='${esc(name)}'`);
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const json = await res.json();
+        const rec = json?.records?.[0];
+        if (rec?.id) return rec;
+      }
+    }
+    // case-insensitive
+    {
+      const url = new URL(baseUrl);
+      url.searchParams.set("pageSize", "1");
+      url.searchParams.set("filterByFormula", `LOWER({${field}})='${esc(name).toLowerCase()}'`);
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const json = await res.json();
+        const rec = json?.records?.[0];
+        if (rec?.id) return rec;
+      }
+    }
+  }
+  return null;
+}
+
+
 
     // ---- internal fetch w/ logging ----
     async _fetch(url, options = {}, tag = "fetch") {

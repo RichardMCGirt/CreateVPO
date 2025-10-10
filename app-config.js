@@ -3,6 +3,24 @@
   "use strict";
 
   var PAT = localStorage.getItem("patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054") || "";
+window.APP = window.APP || {};
+window.APP.airtable = Object.assign({}, window.APP.airtable, {
+  // this is the table your "Preferred Vendor" field links to:
+  PREFERRED_VENDOR_TABLE_ID: "tblp77wpnsiIjJLGh",
+
+  // keep your old source table if you still use it elsewhere:
+  VENDORS_TABLE_ID: "tbl0JQXyAizkNZF5s",
+
+  // candidate name fields for lookups
+  VENDORS_NAME_FIELDS: [
+    "Name",
+    "Vendor Name",
+    "Company",
+    "Company Name",
+    "Subcontractor Company Name"
+  ]
+});
+
 
   window.APPS = {
     vpo: {
