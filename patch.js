@@ -1,8 +1,4 @@
-  // =========================
-  // CONFIG: tweak if needed
-  // =========================
   const CUSTOMER_NAME_IS_PLAINTEXT = false; // true ONLY if "Customer Name" is plain text in Airtable
-
 
   // --- Utilities ---
   const REC_ID_RE = /^rec[a-zA-Z0-9]{14}$/;
@@ -277,10 +273,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return lines.join("\n");
   }
 
-
-// Refresh subcontractor list whenever Branch changes
-
-
 // FULL replacement for loadSubcontractorsForSelectedBranch (VPO path; value=recID)
 async function loadSubcontractorsForSelectedBranch(ev) {
   try {
@@ -324,8 +316,6 @@ async function loadSubcontractorsForSelectedBranch(ev) {
   }
 }
 
-
-
 window.REC_ID_RE = window.REC_ID_RE || /^rec[a-zA-Z0-9]{14}$/; // rec + 14 chars
 
 function nonEmpty(s){ return !!(s && String(s).trim()); }
@@ -361,7 +351,6 @@ function getSelectedRecordId(sel){
       if (lbl === label && window.REC_ID_RE.test(rid)) return rid;
     }
   }
-
   return "";
 }
 
@@ -382,10 +371,49 @@ function populateSelectPairs(sel, pairs) {
     sel.appendChild(o);
   });
 }
+  function canonicalizeVendorLabel(raw) {
+    let s = String(raw || "").trim();
+    s = s.replace(/\s*[–—]\s*/g, " - ");
+    s = s.replace(/\s*\([^)]*\)\s*$/, "");         // drop "(...)" at end
+    const beforeDash = s.split(" - ")[0]?.trim();  // keep part before " - "
+    return beforeDash || s;
+  }
+   window.resolvePreferredVendorForFillIn = async function(fields) {
+    try {
+      const svc = new AirtableService();
+      // 1) Prefer a recId from a select if you ever add one for Fill-In
+      const vendorSel = document.getElementById("subcontractorCompanySelect");
+      const val = (vendorSel && vendorSel.value || "").trim();
+      if (REC_ID_RE.test(val)) {
+        fields["Preferred Vendor"] = [val];
+        return;
+      }
 
-function selectedOptionText(sel) {
-  return sel?.selectedOptions?.[0]?.textContent?.trim() || "";
-}
+      // 2) Otherwise derive from Materials Needed (first vendor)
+      const items = (typeof getEffectiveMaterials === "function") ? getEffectiveMaterials() : [];
+      const firstVendorRaw = (items.find(x => (x && (x.vendor || x.Vendor)))?.vendor) ||
+                             (items[0]?.vendor) || "";
+      const labelRaw = selectedOptionText(vendorSel) || firstVendorRaw || "";
+      if (!labelRaw) return;
+
+      const label = canonicalizeVendorLabel(labelRaw); // e.g., "ABC Supply - Charlotte" -> "ABC Supply"
+      let rec = await svc.findVendorByName(label);
+      if (!rec && label !== labelRaw) {
+        // last try: use the raw label (in case the exact record name really includes the city)
+        rec = await svc.findVendorByName(labelRaw);
+      }
+
+      if (rec?.id) {
+        fields["Preferred Vendor"] = [rec.id];  // linked record expects array
+      } else {
+        console.warn("[Preferred Vendor] No match in linked table for label:", labelRaw);
+      }
+    } catch (e) {
+      console.warn("[Preferred Vendor] resolve failed:", e);
+    }
+  };
+
+  function selectedOptionText(sel) { return sel?.selectedOptions?.[0]?.textContent?.trim() || ""; }
 
   (function wireSave(){
     const btn = document.getElementById("saveAirtable");
@@ -400,7 +428,6 @@ function selectedOptionText(sel) {
       status.style.color = tone === "bad" ? "#991b1b" :
                            tone === "ok"  ? "#065f46" : "inherit";
     }
-
 
 // ===== handleSave.js =====
 window.REC_ID_RE = window.REC_ID_RE || /^rec[a-zA-Z0-9]{14}$/;
@@ -506,7 +533,6 @@ async function ensureIdInTable(service, tableId, recId) {
   }
 }
 
-
 window.collectVendorLabels = collectVendorLabels;
 window.mostCommon          = mostCommon;
 window.resolveVendorRecordId = resolveVendorRecordId;
@@ -569,7 +595,34 @@ async function handleSave(){
     const prefVendSel   = document.getElementById("preferredVendorSelect") 
                        || document.getElementById("vendorSelect");        // try both ids
 
-    // ---------- Linked/Plain fields ----------
+                       // patch.js – just before create/update
+const appMode = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
+if (appMode === "fillin") {
+  await window.resolvePreferredVendorForFillIn(fields);
+}
+let preferredVendorId = "";
+
+if (appMode === "fillin") {
+  const vendorSelect = document.getElementById("subcontractorCompanySelect");
+  const vendorRecId = getSelectedRecordId(vendorSelect); // works if value=recID
+  if (vendorRecId) {
+    preferredVendorId = vendorRecId;
+  } else {
+    // fallback: try to resolve by name
+    const vendorName = selectedOptionText(vendorSelect);
+    if (vendorName) {
+      const svc = new AirtableService();
+      const rec = await svc.findVendorByName(vendorName);
+      preferredVendorId = rec?.id || "";
+    }
+  }
+}
+
+// include in your fields if present
+if (preferredVendorId) {
+  fields["Preferred Vendor"] = [preferredVendorId];  // linked record expects array
+}
+
     // Customer Name
     if (customerSel) {
       const id = resolveRecIdFromSelect(customerSel, window.LINKED?.customersByName);
@@ -658,7 +711,6 @@ try {
       }
     }
 
-    // ---------- Money fields ----------
     // Material Cost = Products Total
     try {
       const productTotalStr = document.getElementById("productTotal")?.textContent?.trim() || "";
@@ -739,11 +791,32 @@ try {
   }
 }
 
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    // Ensure the app runtime from app-config.js is applied first
+    if (window.APP?.airtable && typeof setAirtableRuntimeConfig === "function") {
+      setAirtableRuntimeConfig(window.APP.airtable);
+    }
 
-
-// ===== linked-population.js =====
-// Use this after you fetch the linked tables from Airtable.
-// It both populates <select> options (value=recId) and builds global label→recId maps.
+    // If we are in Fill-In mode, point the resolver to your Fill-In vendor link table
+    const appMode = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
+    if (appMode === "fillin" && typeof setAirtableRuntimeConfig === "function") {
+      setAirtableRuntimeConfig({
+        PREFERRED_VENDOR_TABLE_ID: "tblLEYdDi0hfD9fT3", // <-- your Fill-In link table
+        VENDORS_NAME_FIELDS: [
+          "Name",
+          "Vendor Name",
+          "Company",
+          "Company Name",
+          "Preferred Vendor",
+          "Preferred Vendor Name"
+        ]
+      });
+    }
+  } catch (e) {
+    console.warn("[Fill-In vendor override] failed:", e);
+  }
+});
 
 window.LINKED = window.LINKED || {
   customersByName: new Map(),
@@ -782,6 +855,7 @@ function applyPairsToSelect(sel, pairs){
     }
   }
 }
+
 // rehydrate-linked-selects.js
 async function rehydrateLinkedSelects(){
   const svc = new AirtableService();
@@ -828,26 +902,6 @@ async function rehydrateLinkedSelects(){
     console.warn("[rehydrateLinkedSelects] failed – leaving labels as-is", e);
   }
 }
-// save-guard.js
-async function handleSaveGuarded(saveFn){
-  // quick detector: are key selects ID-valued?
-  const branchSel = document.getElementById("branchSelect");
-  const fmSel     = document.getElementById("fieldManagerSelect");
-  const custSel   = document.getElementById("customerSelect");
-  const isIdVal = (sel) => {
-    const o = sel && sel.options && sel.options[1];
-    return !!(o && window.REC_ID_RE.test(o.value));
-  };
-
-  // if any are not ID-valued, try to rehydrate first
-  if (!isIdVal(branchSel) || !isIdVal(fmSel) || !isIdVal(custSel)) {
-    console.warn("[Save] Linked selects not ID-valued. Rehydrating before save…");
-    await rehydrateLinkedSelects();
-  }
-
-  // now call your real save
-  return saveFn();
-}
 
 function clearAndSetPlaceholder(sel, placeholder="— Select —"){
   while (sel.firstChild) sel.removeChild(sel.firstChild);
@@ -866,12 +920,6 @@ function addOption(sel, { id, label, selected=false }){
   sel.appendChild(opt);
 }
 
-/**
- * Populate a linked <select> with records from Airtable.
- * records: [{id, fields:{Name: "...", ...}}, ...]
- * nameField: which Airtable field to show as label (default "Name")
- * map: Map() to fill with label→id lookups (case-insensitive)
- */
 function populateLinkedSelect(sel, records, { nameField="Name", map } = {}){
   if (!sel || !Array.isArray(records)) return;
 
@@ -887,7 +935,7 @@ function populateLinkedSelect(sel, records, { nameField="Name", map } = {}){
 
     if (map) {
       const key = label.toLowerCase();
-      if (!seen.has(key)) { // keep first if duplicates
+      if (!seen.has(key)) { 
         map.set(key, r.id);
         seen.add(key);
       }

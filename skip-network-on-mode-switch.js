@@ -10,7 +10,6 @@
       try {
         var obj = JSON.parse(ms);
         if (obj && typeof obj.at === "number") {
-          // treat as "recent" for ~15s
           recentSwitch = (Date.now() - obj.at) < 15000;
         }
       } catch {}
@@ -20,7 +19,6 @@
     // Tell database.js to skip its Google boot/fetch path
     window.__SKIP_BOOTSTRAP = true;
 
-    // Hydrate ALL_ROWS from cache so __renderFromCacheNow() can render immediately
     // Keys used by database.js:
     var SS_KEY = "vanir_products_cache_v2_ss";
     var LS_KEY = "vanir_products_cache_v2";

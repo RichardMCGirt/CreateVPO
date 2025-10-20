@@ -225,72 +225,7 @@ async function initDropdowns(service) {
     await loadFromCuratedSources(); 
   }
 
-
-// FULL replacement — uses the visible option text (label) instead of relying on window.maps
-async function loadSubcontractorsForSelectedBranch(ev) {
-  try {
-    const svc  = new AirtableService();
-    const app  = (window.APP_MODE || (window.APP && window.APP.key) || "vpo").toLowerCase();
-    const bSel = document.getElementById("branchSelect");
-    const sSel = document.getElementById("subcontractorCompanySelect");
-    if (!bSel || !sSel) return;
-
-    // Clear first (keep a placeholder)
-    while (sSel.firstChild) sSel.removeChild(sSel.firstChild);
-    sSel.appendChild(new Option("—", ""));
-
-    // IMPORTANT: convert Branch recId -> human label using the selected option's text
-    const opt = bSel.selectedOptions && bSel.selectedOptions[0];
-    const branchLabel = ((opt && opt.textContent) || "").trim();
-    if (!branchLabel) return;
-
-    if (app === "vpo") {
-      // Fetch pairs filtered by label, then paint options with VALUE=recId (so saving a linked field works)
-      const pairs = await svc.fetchSubcontractorOptionsFilteredByBranch(branchLabel);
-      for (const p of (pairs || [])) {
-        const o = document.createElement("option");
-        o.value = p.id;           // value = record id (recXXXXXXXXXXXXXX)
-        o.textContent = p.label;  // visible name
-        sSel.appendChild(o);
-      }
-      // bubble change so any dependent logic runs
-      sSel.dispatchEvent(new Event("change", { bubbles: true }));
-    } else {
-      // fill-in path (implement when needed)
-    }
-  } catch (e) {
-    console.warn("[subcontractor] load failed:", e);
-    const sSel = document.getElementById("subcontractorCompanySelect");
-    if (sSel) { sSel.innerHTML = ""; sSel.appendChild(new Option("—", "")); }
-  }
 }
-}
-
-
-// FULL: refreshSubcontractorsForBranch (per-branch cache; no fetch if cached)
-async function refreshSubcontractorsForBranch(service) {
-  if (!els.subcontractorCompany) return;
-  const baseId = atBaseId();
-  const label  = currentBranchLabel();
-  if (!label) { populateSelectWithPairs(els.subcontractorCompany, []); return; }
-
-  const cached = ATOPTS?.getBranchSubs?.(baseId, label);
-  if (cached) { populateSelectWithPairs(els.subcontractorCompany, cached); return; }
-
-  // Only fetch if missing for this base+branch
-  try {
-    const opts  = await service.fetchSubcontractorOptionsFilteredByBranch(label);
-    const pairs = (opts || []).map(o => ({ value: o.id, label: o.label }));
-    populateSelectWithPairs(els.subcontractorCompany, pairs);
-    ATOPTS?.saveBranchSubs?.(baseId, label, pairs);
-  } catch (e) {
-    console.warn("[subcontractors] fetch failed", e);
-    populateSelectWithPairs(els.subcontractorCompany, []);
-  }
-}
-
-
-
 
 function setSaved(nextState) {
   try {
@@ -358,9 +293,6 @@ function setSaved(nextState) {
     (pairs||[]).forEach(({value,label}) => { const opt=document.createElement("option"); opt.value=value; opt.textContent=label; sel.appendChild(opt); });
   }
  
-
- 
-
   // ---------- US City filter (heuristic) ----------
   const US_STATE_ABBR = new Set([
     "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA",
@@ -393,13 +325,6 @@ function setSaved(nextState) {
     if (!/^[A-Za-z][A-Za-z .'-]*$/.test(city)) return false;
     return true;
   }
-  function filterToUSCities(options) {
-    const filtered = [];
-    const rejected = [];
-    (options || []).forEach(o => (isLikelyUSCity(o.label) ? filtered : rejected).push(o));
-    return { filtered, rejected };
-  }
-
 
   function ensureOption(selectEl, value, label) {
     if (!selectEl || !value) return;
@@ -630,7 +555,6 @@ function renderLaborList(state) {
 
   rowsHost.innerHTML = cards.join("");
 
-  // NEW: after render, read the DOM once and persist exactly what’s displayed
   syncLaborFromDOM();
 }
 
@@ -683,8 +607,6 @@ function addLaborLine(defaults = {}) {
   showToast?.("Labor line added");
 }
 
-
-  // ---------- CART RENDER / REMOVE / CLEAR ----------
  // Replace your renderSavedCart with this version
 function renderSavedCart(stateMaybe) {
 
@@ -782,7 +704,6 @@ tbody.onclick = (ev) => {
     logger.error?.("cart", "[tbody.onclick] Unhandled error:", err);
   }
 };
-
 }
 
 function updateTotalsOnly(state) {
@@ -809,8 +730,6 @@ function updateTotalsOnly(state) {
   $("#grandTotal").textContent   = formatMoney(productsTotal + laborTotal);
 }
 
-
-  // Dedicated remove function
 // --- removeItemFromCart (fix invalid logger call) ---
 function removeItemFromCart(key) {
   try {
@@ -858,8 +777,6 @@ function wireClearAll() {
   }, { passive: true });
 }
 
-
-
   function wireAddLabor() {
     const btn = $("#addLabor");
     if (!btn || btn._bound) return;
@@ -884,6 +801,7 @@ function wireClearAll() {
       renderSavedCart(state);
     });
   }
+
 function normalizeSaved(state) {
   const s = (state && typeof state === "object") ? state : {};
   s.cart  = Array.isArray(s.cart)  ? s.cart  : [];
@@ -947,18 +865,5 @@ document.addEventListener("DOMContentLoaded", async () => {
 };
   }
 });
-
-
-async function bootAirtable(){
-  try {
-    const svc = new window.AirtableService();
-    await initDropdowns(svc);         // populate Branch / FM / NeededBy / Reason
-    wireSaveButton(svc);
-  } catch (e) {
-    // non-fatal
-    console.warn("Dropdown init failed", e);
-  }
-}
-
 })();
 

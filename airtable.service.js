@@ -255,13 +255,14 @@ _headers() {
 }
 
 // Find by name in a specific table (opts.tableId), fallback to config tables
+// airtable.service.js
 async findVendorByName(name, opts = {}) {
   if (!name) return null;
 
   const tableId =
     opts.tableId ||
-    this.config?.PREFERRED_VENDOR_TABLE_ID ||   // <-- use the linked table first
-    this.config?.VENDORS_TABLE_ID ||           // fallback to source table
+    this.config?.PREFERRED_VENDOR_TABLE_ID ||
+    this.config?.VENDORS_TABLE_ID ||
     "tbl0JQXyAizkNZF5s";
 
   const nameFields =
@@ -273,24 +274,55 @@ async findVendorByName(name, opts = {}) {
   const baseUrl = this._tableUrl(tableId);
   const headers = this._headers();
 
-  for (const field of nameFields) {
-    // exact
-    {
-      const url = new URL(baseUrl);
-      url.searchParams.set("pageSize", "1");
-      url.searchParams.set("filterByFormula", `{${field}}='${esc(name)}'`);
-      const res = await fetch(url, { headers });
-      if (res.ok) {
-        const json = await res.json();
-        const rec = json?.records?.[0];
-        if (rec?.id) return rec;
+  // Generate candidate strings to try
+  function canonicalize(raw) {
+    let s = String(raw || "").trim();
+    s = s.replace(/\s*[–—]\s*/g, " - ");            // normalize dash types
+    s = s.replace(/\s*\([^)]*\)\s*$/, "");          // drop trailing parens "(…)"
+    const beforeDash = s.split(" - ")[0]?.trim();   // prefer part before " - "
+    return beforeDash || s;
+  }
+  const candidates = Array.from(new Set([
+    String(name || "").trim(),
+    canonicalize(name)
+  ])).filter(Boolean);
+
+  // Try each candidate string with (1) exact, (2) lower-case exact, then (3) contains
+  for (const cand of candidates) {
+    for (const field of nameFields) {
+      // Exact
+      {
+        const url = new URL(baseUrl);
+        url.searchParams.set("pageSize", "1");
+        url.searchParams.set("filterByFormula", `{${field}}='${esc(cand)}'`);
+        const res = await fetch(url, { headers });
+        if (res.ok) {
+          const json = await res.json();
+          const rec = json?.records?.[0];
+          if (rec?.id) return rec;
+        }
+      }
+      // Case-insensitive exact
+      {
+        const url = new URL(baseUrl);
+        url.searchParams.set("pageSize", "1");
+        url.searchParams.set("filterByFormula", `LOWER({${field}})='${esc(cand).toLowerCase()}'`);
+        const res = await fetch(url, { headers });
+        if (res.ok) {
+          const json = await res.json();
+          const rec = json?.records?.[0];
+          if (rec?.id) return rec;
+        }
       }
     }
-    // case-insensitive
-    {
+  }
+
+  // Contains (SEARCH) as last resort
+  for (const cand of candidates) {
+    for (const field of nameFields) {
       const url = new URL(baseUrl);
       url.searchParams.set("pageSize", "1");
-      url.searchParams.set("filterByFormula", `LOWER({${field}})='${esc(name).toLowerCase()}'`);
+      url.searchParams.set("filterByFormula", `IF(SEARCH('${esc(cand)}', {${field}}), TRUE(), FALSE())`);
       const res = await fetch(url, { headers });
       if (res.ok) {
         const json = await res.json();
@@ -299,8 +331,10 @@ async findVendorByName(name, opts = {}) {
       }
     }
   }
+
   return null;
 }
+
 
 
 

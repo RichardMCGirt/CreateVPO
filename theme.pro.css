@@ -1,11 +1,3 @@
-
-/* ==========================================================================
-   Vanir – Professional Theme Overlay (Colors + Tone Only)
-   --------------------------------------------------------------------------
-   Drop this file AFTER your existing stylesheet to recolor the UI without
-   changing layout or measurements. Pairs with style.cleaned.css.
-   ========================================================================== */
-
 :root {
   /* Base */
   --bg:            #f8fafc;  /* slate-50 */

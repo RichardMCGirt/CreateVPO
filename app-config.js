@@ -5,11 +5,17 @@
   var PAT = localStorage.getItem("patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054") || "";
 window.APP = window.APP || {};
 window.APP.airtable = Object.assign({}, window.APP.airtable, {
-  // this is the table your "Preferred Vendor" field links to:
   PREFERRED_VENDOR_TABLE_ID: "tblp77wpnsiIjJLGh",
-
-  // keep your old source table if you still use it elsewhere:
   VENDORS_TABLE_ID: "tbl0JQXyAizkNZF5s",
+PREFERRED_VENDOR_TABLE_ID: "tblLEYdDi0hfD9fT3",  // <-- Fill-In vendor LINKED table
+VENDORS_NAME_FIELDS: [
+  "Name",
+  "Vendor Name",
+  "Company",
+  "Company Name",
+  "Preferred Vendor",
+  "Preferred Vendor Name"
+],
 
   // candidate name fields for lookups
   VENDORS_NAME_FIELDS: [
@@ -20,7 +26,6 @@ window.APP.airtable = Object.assign({}, window.APP.airtable, {
     "Subcontractor Company Name"
   ]
 });
-
 
   window.APPS = {
     vpo: {
@@ -78,7 +83,6 @@ window.APP.airtable = Object.assign({}, window.APP.airtable, {
     }
   };
 
-  // --- Persist a PAT locally if missing (dev convenience) ---
   try {
     if (!localStorage.getItem("AIRTABLE_API_KEY")) {
       localStorage.setItem("AIRTABLE_API_KEY", "patTGK9HVgF4n1zqK.cbc0a103ecf709818f4cd9a37e18ff5f68c7c17f893085497663b12f2c600054");

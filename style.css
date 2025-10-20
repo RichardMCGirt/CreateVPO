@@ -1128,7 +1128,6 @@ header.cart-header {
 #table-viewport .vhead > div {
   padding: 4px;
 }
-
 }
 
 @supports (-webkit-touch-callout: none) {
